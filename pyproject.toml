@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=65"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ufaya"
+version = "0.1.0"
+description = "Unified Firewall Automation SDK"
+authors = [{name="Ahmad Khanafer"}]
+dependencies = [
+    "pydantic",
+    "requests",
+    "netmiko",
+    "networkx"
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["ufaya*"]
