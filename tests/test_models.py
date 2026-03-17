@@ -2,7 +2,7 @@
 
 import pytest
 
-from ufaya.models.firewall_rule import FirewallRule
+from ufaya.models.firewall_rule import FirewallRule, ServiceDetail
 
 
 def make_rule(**overrides):
@@ -54,8 +54,10 @@ def test_new_fields_default_to_none():
     assert rule.source_refs is None
     assert rule.destination_refs is None
     assert rule.service_refs is None
+    assert rule.service_details is None
     assert rule.description is None
     assert rule.log_events is False
+    assert rule.log_actions is None
     assert rule.raw is None
 
 
@@ -67,8 +69,17 @@ def test_new_fields_can_be_set():
         source_refs=["web-server"],
         destination_refs=["any"],
         service_refs=["junos-http"],
+        service_details=[
+            ServiceDetail(
+                label="junos-http",
+                protocol="tcp",
+                destination_ports=["80"],
+                resolved=False,
+            )
+        ],
         description="test desc",
         log_events=True,
+        log_actions=["session-init"],
         raw={"name": "allow-http"},
     )
     assert rule.sequence == 1
@@ -77,8 +88,17 @@ def test_new_fields_can_be_set():
     assert rule.source_refs == ["web-server"]
     assert rule.destination_refs == ["any"]
     assert rule.service_refs == ["junos-http"]
+    assert rule.service_details == [
+        ServiceDetail(
+            label="junos-http",
+            protocol="tcp",
+            destination_ports=["80"],
+            resolved=False,
+        )
+    ]
     assert rule.description == "test desc"
     assert rule.log_events is True
+    assert rule.log_actions == ["session-init"]
     assert rule.raw == {"name": "allow-http"}
 
 
@@ -86,12 +106,38 @@ def test_extended_fields_serialisation():
     rule = make_rule(
         sequence=5,
         source_zones=["trust"],
+        service_details=[
+            ServiceDetail(
+                label="tcp-443",
+                protocol="tcp",
+                destination_ports=["443"],
+                resolved=True,
+            )
+        ],
+        log_actions=["session-init"],
         description="desc",
         raw={"key": "val"},
     )
     data = rule.model_dump()
     assert data["sequence"] == 5
     assert data["source_zones"] == ["trust"]
+    assert data["service_details"] == [
+        {
+            "label": "tcp-443",
+            "protocol": "tcp",
+            "source_ports": None,
+            "destination_ports": ["443"],
+            "application_protocol": None,
+            "icmp_type": None,
+            "icmp_code": None,
+            "icmp6_type": None,
+            "icmp6_code": None,
+            "rpc_program_number": None,
+            "inactivity_timeout": None,
+            "resolved": True,
+        }
+    ]
+    assert data["log_actions"] == ["session-init"]
     assert data["description"] == "desc"
     assert data["raw"] == {"key": "val"}
     # Unset optional fields

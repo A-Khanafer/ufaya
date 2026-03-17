@@ -1,11 +1,10 @@
 """Juniper SRX security-policy driver.
 
-Supports three source modes:
+Supports two source modes:
 
 * **live** — connects to a device via Netmiko and fetches the full
   configuration as XML.
 * **offline file** — reads XML from a local file path.
-* **offline raw** — accepts XML as a string.
 
 The driver exposes :meth:`get_rules` (returning ``list[FirewallRule]`` in
 device evaluation order) and :meth:`export_rules_json` (writing one
@@ -36,11 +35,10 @@ from ufaya.models.firewall_rule import FirewallRule
 class JuniperSRXDriver(FirewallDriver):
     """Driver for Juniper SRX security-policy ingestion.
 
-    Supports three source modes (exactly one must be provided):
+    Supports two source modes (exactly one must be provided):
 
     * **live** — ``host``, ``username``, ``password``
     * **offline file** — ``config_path``
-    * **offline raw XML** — ``config_xml``
 
     All modes accept an optional ``device_name`` used in
     :class:`~ufaya.models.firewall_rule.FirewallRule` output and JSON
@@ -54,32 +52,29 @@ class JuniperSRXDriver(FirewallDriver):
         username: str | None = None,
         password: str | None = None,
         config_path: str | Path | None = None,
-        config_xml: str | None = None,
         device_name: str | None = None,
     ) -> None:
         live = host is not None
         file_mode = config_path is not None
-        raw_mode = config_xml is not None
 
-        mode_count = sum([live, file_mode, raw_mode])
+        mode_count = sum([live, file_mode])
         if mode_count == 0:
             raise ValueError(
                 "JuniperSRXDriver requires exactly one source: "
                 "provide (host, username, password) for live mode, "
-                "config_path for file mode, or config_xml for raw XML mode."
+                "or config_path for file mode."
             )
         if mode_count > 1:
             raise ValueError(
                 "JuniperSRXDriver received conflicting source arguments. "
-                "Provide exactly one of: (host, username, password), "
-                "config_path, or config_xml."
+                "Provide exactly one of: (host, username, password) "
+                "or config_path."
             )
 
         self._host: str | None = None
         self._username: str | None = None
         self._password: str | None = None
         self._config_path: Path | None = None
-        self._config_xml: str | None = None
 
         if live:
             if not username or not password:
@@ -90,12 +85,9 @@ class JuniperSRXDriver(FirewallDriver):
             self._host = host
             self._username = username
             self._password = password
-        elif file_mode:
+        else:
             self._mode = "file"
             self._config_path = Path(config_path)  # type: ignore[arg-type]
-        else:
-            self._mode = "raw"
-            self._config_xml = config_xml
 
         self._device_name = device_name or (host if host else "juniper_srx")
 
@@ -190,10 +182,7 @@ class JuniperSRXDriver(FirewallDriver):
         """Retrieve the raw XML configuration string."""
         if self._mode == "live":
             return self._fetch_live()
-        if self._mode == "file":
-            return self._read_file()
-        assert self._config_xml is not None
-        return self._config_xml
+        return self._read_file()
 
     def _fetch_live(self) -> str:
         try:
@@ -332,14 +321,26 @@ class JuniperSRXDriver(FirewallDriver):
 
         source = resolver.resolve_addresses(src_refs, src_zones)
         destination = resolver.resolve_addresses(dst_refs, dst_zones)
-        service = resolver.resolve_applications(svc_refs)
+        service, service_details = resolver.resolve_applications(svc_refs)
         action = normalize_action(policy)
 
         log_events = False
+        log_actions: list[str] | None = None
         then = find(policy, "then")
         if then is not None:
-            if find(then, "log") is not None:
+            log = find(then, "log")
+            if log is not None:
                 log_events = True
+                log_actions = []
+                for child in log:
+                    tag = child.tag
+                    if "}" in tag:
+                        tag = tag.split("}", 1)[1]
+                    action_name = tag.lower()
+                    if action_name not in log_actions:
+                        log_actions.append(action_name)
+                if not log_actions:
+                    log_actions = ["log"]
 
         raw = elem_to_dict(policy)
 
@@ -359,7 +360,9 @@ class JuniperSRXDriver(FirewallDriver):
             source_refs=src_refs,
             destination_refs=dst_refs,
             service_refs=svc_refs,
+            service_details=service_details,
             description=description,
             log_events=log_events,
+            log_actions=log_actions,
             raw=raw,
         )
