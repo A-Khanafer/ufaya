@@ -1,11 +1,12 @@
 """Tests for vendor driver skeletons."""
-import pytest
-from ufaya.drivers.paloalto import PaloAltoDriver
-from ufaya.drivers.fortinet import FortinetDriver
-from ufaya.drivers.cisco import CiscoDriver
-from ufaya.drivers.juniper_srx import JuniperSRXDriver
-from ufaya.models.firewall_rule import FirewallRule
 
+import pytest
+
+from ufaya.drivers.cisco import CiscoDriver
+from ufaya.drivers.fortinet import FortinetDriver
+from ufaya.drivers.juniper_srx import JuniperSRXDriver
+from ufaya.drivers.paloalto import PaloAltoDriver
+from ufaya.models.firewall_rule import FirewallRule
 
 DRIVER_CLASSES = [PaloAltoDriver, FortinetDriver, CiscoDriver, JuniperSRXDriver]
 

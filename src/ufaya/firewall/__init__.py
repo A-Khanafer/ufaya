@@ -1,7 +1,7 @@
 """Firewall abstractions."""
 
-from .base import FirewallDriver
 from ..services.device_factory import get_firewall_driver
+from .base import FirewallDriver
 
 
 def get_rules(vendor: str, **kwargs):

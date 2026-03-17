@@ -1,5 +1,7 @@
 """Tests for the FirewallRule model."""
+
 import pytest
+
 from ufaya.models.firewall_rule import FirewallRule
 
 

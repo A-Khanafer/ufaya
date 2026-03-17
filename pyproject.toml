@@ -60,6 +60,7 @@ addopts = "--cov=ufaya --cov-report=term-missing"
 [tool.ruff]
 line-length = 88
 target-version = "py310"
+exclude = ["src/ufaya/_version.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
