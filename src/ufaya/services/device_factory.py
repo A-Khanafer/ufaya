@@ -25,7 +25,7 @@ def get_firewall_driver(vendor: str, **kwargs: str) -> FirewallDriver:
         ValueError: If *vendor* is not supported.
     """
     try:
-        return _DRIVERS[vendor](**kwargs)  # type: ignore[arg-type]
+        return _DRIVERS[vendor](**kwargs)
     except KeyError:
         supported = ", ".join(_DRIVERS)
         raise ValueError(f"Unsupported vendor '{vendor}'. Choose from: {supported}")
