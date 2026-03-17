@@ -1,21 +1,25 @@
-from ..firewall.base import FirewallDriver
+from __future__ import annotations
+
+from ufaya.firewall.base import FirewallDriver
+from ufaya.models.firewall_rule import FirewallRule
 
 
 class FortinetDriver(FirewallDriver):
+    """Driver for Fortinet FortiGate devices."""
 
-	def __init__(self, host, username, password):
-		self.host = host
-		self.username = username
-		self.password = password
+    def __init__(self, host: str, username: str, password: str) -> None:
+        self.host = host
+        self.username = username
+        self.password = password
 
-	def get_rules(self):
-		return []
+    def get_rules(self) -> list[FirewallRule]:
+        return []
 
-	def create_rule(self, rule):
-		pass
+    def create_rule(self, rule: FirewallRule) -> None:
+        pass
 
-	def delete_rule(self, rule_id):
-		pass
+    def delete_rule(self, rule_id: str) -> None:
+        pass
 
-	def commit(self):
-		pass
+    def commit(self) -> None:
+        pass

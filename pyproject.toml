@@ -1,17 +1,49 @@
 [build-system]
-requires = ["setuptools>=65"]
+requires = ["setuptools>=65", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "ufaya"
-version = "0.1.0"
-description = "Unified Firewall Automation SDK"
-authors = [{name="Ahmad Khanafer"}]
+dynamic = ["version"]
+description = "Unified Firewall Abstraction laYer for Automation"
+readme = "README.md"
+authors = [{name = "Ahmad Khanafer", email = "ahmad.khanafer.191@gmail.com"}]
+license = { text = "MIT" }
+requires-python = ">=3.10"
+keywords = ["firewall", "automation", "network", "abstraction-layer", "unified"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: System Administrators",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Networking :: Firewalls",
+    "Typing :: Typed",
+]
 dependencies = [
-    "pydantic",
-    "requests",
-    "netmiko",
-    "networkx"
+    "pydantic>=2.0,<3",
+    "requests>=2.28,<3",
+    "netmiko>=4.0,<5",
+    "networkx>=3.0,<4",
+]
+
+[project.urls]
+Homepage = "https://github.com/A-Khanafer/ufaya"
+Repository = "https://github.com/A-Khanafer/ufaya"
+Issues = "https://github.com/A-Khanafer/ufaya/issues"
+Changelog = "https://github.com/A-Khanafer/ufaya/blob/main/CHANGELOG.md"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov",
+    "ruff",
+    "mypy",
+    "types-requests",
 ]
 
 [tool.setuptools]
@@ -20,3 +52,21 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["ufaya*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=ufaya --cov-report=term-missing"
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.setuptools_scm]
+version_file = "src/ufaya/_version.py"
+
+[tool.mypy]
+strict = true
+warn_return_any = true

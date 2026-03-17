@@ -1,21 +1,25 @@
-from ..firewall.base import FirewallDriver
+from __future__ import annotations
+
+from ufaya.firewall.base import FirewallDriver
+from ufaya.models.firewall_rule import FirewallRule
 
 
 class PaloAltoDriver(FirewallDriver):
+    """Driver for Palo Alto Networks devices."""
 
-    def __init__(self, host, username, password):
+    def __init__(self, host: str, username: str, password: str) -> None:
         self.host = host
         self.username = username
         self.password = password
 
-    def get_rules(self):
+    def get_rules(self) -> list[FirewallRule]:
         return []
 
-    def create_rule(self, rule):
+    def create_rule(self, rule: FirewallRule) -> None:
         pass
 
-    def delete_rule(self, rule_id):
+    def delete_rule(self, rule_id: str) -> None:
         pass
 
-    def commit(self):
+    def commit(self) -> None:
         pass

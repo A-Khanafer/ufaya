@@ -1,6 +1,8 @@
-"""Vendor-specific driver implementations."""
+"""Vendor-specific firewall driver implementations."""
 
-from .fortinet import FortinetDriver
-from .paloalto import PaloAltoDriver
+from ufaya.drivers.cisco import CiscoDriver
+from ufaya.drivers.fortinet import FortinetDriver
+from ufaya.drivers.juniper_srx import JuniperSRXDriver
+from ufaya.drivers.paloalto import PaloAltoDriver
 
-__all__ = ["PaloAltoDriver", "FortinetDriver"]
+__all__ = ["CiscoDriver", "FortinetDriver", "JuniperSRXDriver", "PaloAltoDriver"]
