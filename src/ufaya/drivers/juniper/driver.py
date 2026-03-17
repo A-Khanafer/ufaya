@@ -75,6 +75,12 @@ class JuniperSRXDriver(FirewallDriver):
                 "config_path, or config_xml."
             )
 
+        self._host: str | None = None
+        self._username: str | None = None
+        self._password: str | None = None
+        self._config_path: Path | None = None
+        self._config_xml: str | None = None
+
         if live:
             if not username or not password:
                 raise ValueError(
@@ -84,21 +90,11 @@ class JuniperSRXDriver(FirewallDriver):
             self._host = host
             self._username = username
             self._password = password
-            self._config_path: Path | None = None
-            self._config_xml: str | None = None
         elif file_mode:
             self._mode = "file"
-            self._host = None
-            self._username = None
-            self._password = None
             self._config_path = Path(config_path)  # type: ignore[arg-type]
-            self._config_xml = None
         else:
             self._mode = "raw"
-            self._host = None
-            self._username = None
-            self._password = None
-            self._config_path = None
             self._config_xml = config_xml
 
         self._device_name = device_name or (host if host else "juniper_srx")
@@ -201,7 +197,7 @@ class JuniperSRXDriver(FirewallDriver):
 
     def _fetch_live(self) -> str:
         try:
-            from netmiko import ConnectHandler
+            from netmiko import ConnectHandler  # type: ignore[import-untyped]
         except ImportError as exc:
             raise ImportError(
                 "netmiko is required for live mode. "
