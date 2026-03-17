@@ -2,54 +2,69 @@
 
 All notable changes to this project will be documented in this file.
 
-The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.3.0]
+
+### Added
+
+- Generic `ServiceDetail` model plus `FirewallRule.service_details` for structured service semantics across vendors.
+- `FirewallRule.log_actions` to preserve exact logging actions such as `session-init` and `session-close`.
+- Juniper fixtures and test coverage for term-based applications, richer service fields, and detailed logging extraction.
+
+### Changed
+
+- Juniper SRX application resolution now expands term-based applications into structured service details while keeping `service` as a deduplicated summary field.
+- Juniper SRX logging extraction now preserves exact log actions instead of reducing logging to a single boolean.
+- Project docs now describe the Juniper driver as supporting live mode or file-backed XML via `config_path`.
+
+### Fixed
+
+- Duplicate summary services produced by overlapping or multi-term Juniper application expansion are now deduplicated without discarding distinct underlying semantics.
+
+### Removed
+
+- `config_xml` from `JuniperSRXDriver`; offline Juniper ingestion now accepts only `config_path`.
+
+## [0.2.1] - 2026-03-17
+
+### Fixed
+
+- PyPI publish workflow now marks the package as public.
 
 ## [0.2.0] - 2026-03-17
 
 ### Added
-- **Juniper SRX security-policy ingestion** — full read-only driver supporting three mutually exclusive source modes:
-  - **Live** — connects to a device via Netmiko using `host`, `username`, `password`
-  - **Offline file** — reads XML from a local path via `config_path`
-  - **Offline raw XML** — accepts an XML string via `config_xml`
-- `JuniperSRXDriver.get_rules()` returns `list[FirewallRule]` in device evaluation order
-  - Zone-to-zone and global policies
-  - Address-book and address-set resolution with recursive expansion and cycle protection
-  - Custom application and application-set resolution
-  - Action normalisation (`permit` → `allow`, `deny` → `deny`, `reject` → `reject`)
-  - Inactive policy detection (`enabled=False`)
-  - Description and logging extraction
-  - Junos `<rpc-reply>` wrapper handling
-  - Unresolved vendor names preserved (never silently dropped)
-- `JuniperSRXDriver.export_rules_json(output_dir)` — Juniper-specific JSON export
-  - Deterministic filename: `<sanitized_device>.firewall_rules.json`
-  - Atomic overwrite via temp file + `os.replace()`
-  - Creates output directory with `parents=True` if missing
-  - Top-level JSON payload: `vendor`, `device`, `rule_count`, `order`, `rules`
-- Extended `FirewallRule` model with new optional fields (backward-compatible):
-  - `sequence`, `source_zones`, `destination_zones`
-  - `source_refs`, `destination_refs`, `service_refs`
-  - `description`, `log_events`, `raw`
-- Comprehensive test suite for Juniper SRX (constructor validation, XML parsing, address/application resolution, action normalisation, inactive policies, RPC-reply unwrapping, live fetch mock, JSON export)
-- XML test fixtures under `tests/fixtures/`
+
+- Read-only Juniper SRX driver with live device fetch and file-based XML ingestion.
+- Device-order rule extraction for zone-to-zone and global Juniper security policies.
+- Recursive Juniper address-book, address-set, application, and application-set resolution with cycle protection.
+- Juniper-specific JSON export for parsed firewall rules.
+- Additional vendor-generic `FirewallRule` metadata including sequence, zones, object references, descriptions, logging summary, and raw vendor payloads.
+- Comprehensive Juniper fixtures and test coverage for parsing, resolution, action normalization, inactive rules, RPC-reply handling, live fetch mocking, and JSON export.
 
 ### Changed
-- `get_firewall_driver()` kwargs widened from `str` to `Any` to support Juniper's richer constructor
-- `JuniperSRXDriver` constructor now uses keyword-only arguments
-- Juniper driver refactored from single `drivers/juniper_srx.py` into `drivers/juniper/` package (`driver.py`, `resolver.py`, `xml_helpers.py`)
-- Import path changed from `ufaya.drivers.juniper_srx` to `ufaya.drivers.juniper`
+
+- `get_firewall_driver()` now accepts richer keyword arguments required by the Juniper driver.
+- Juniper support was refactored from a single module into a package with dedicated driver, resolver, and XML helper modules.
+- Import path changed from `ufaya.drivers.juniper_srx` to `ufaya.drivers.juniper`.
 
 ### Removed
-- `src/ufaya/drivers/juniper_srx.py` — replaced by `src/ufaya/drivers/juniper/` package
 
+- Legacy `src/ufaya/drivers/juniper_srx.py` module.
 
-## [0.1.0]
+## [0.1.0] - 2026-03-16
 
 ### Added
-- `FirewallDriver` abstract base class with full type hints
-- `FirewallRule` Pydantic model wired into the driver interface
-- Skeleton drivers for Palo Alto, Fortinet, Cisco, and Juniper SRX
-- `get_firewall_driver()` factory supporting all four vendors
-- `py.typed` marker for PEP 561 compliance
-- Full test suite (`tests/`)
-- CI workflow (GitHub Actions) — lint, type-check, test on Python 3.10–3.12
-- Dev tooling: ruff, mypy, pytest-cov configured in `pyproject.toml`
+
+- `FirewallDriver` abstract base class with typed CRUD and commit operations.
+- `FirewallRule` Pydantic model shared across firewall drivers.
+- Initial driver skeletons for Palo Alto, Fortinet, Cisco, and Juniper SRX.
+- `get_firewall_driver()` factory for vendor-based driver selection.
+- PEP 561 typing marker, test suite, and CI/dev tooling configuration.
+
+[Unreleased]: https://github.com/A-Khanafer/ufaya/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/A-Khanafer/ufaya/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/A-Khanafer/ufaya/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/A-Khanafer/ufaya/releases/tag/v0.1.0

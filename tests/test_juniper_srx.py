@@ -18,6 +18,12 @@ def _fixture(name: str) -> Path:
     return FIXTURES / name
 
 
+def _write_xml(tmp_path: Path, name: str, content: str) -> Path:
+    path = tmp_path / name
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
 # =====================================================================
 # Constructor validation
 # =====================================================================
@@ -37,21 +43,9 @@ class TestConstructorValidation:
                 config_path="/tmp/x.xml",
             )
 
-    def test_conflicting_live_and_raw_raises(self):
-        with pytest.raises(ValueError, match="conflicting source"):
-            JuniperSRXDriver(
-                host="1.2.3.4",
-                username="admin",
-                password="s",
-                config_xml="<configuration/>",
-            )
-
-    def test_conflicting_file_and_raw_raises(self):
-        with pytest.raises(ValueError, match="conflicting source"):
-            JuniperSRXDriver(
-                config_path="/tmp/x.xml",
-                config_xml="<configuration/>",
-            )
+    def test_removed_config_xml_argument_raises_type_error(self):
+        with pytest.raises(TypeError, match="config_xml"):
+            JuniperSRXDriver(config_xml="<configuration/>")
 
     def test_live_mode_requires_username(self):
         with pytest.raises(ValueError, match="username"):
@@ -72,16 +66,15 @@ class TestConstructorValidation:
         d = JuniperSRXDriver(config_path="/tmp/test.xml")
         assert d._mode == "file"
 
-    def test_raw_mode_accepted(self):
-        d = JuniperSRXDriver(config_xml="<configuration/>")
-        assert d._mode == "raw"
-
     def test_custom_device_name(self):
-        d = JuniperSRXDriver(config_xml="<configuration/>", device_name="fw-lab")
+        d = JuniperSRXDriver(
+            config_path=_fixture("juniper_actions.xml"),
+            device_name="fw-lab",
+        )
         assert d._device_name == "fw-lab"
 
     def test_default_device_name_offline(self):
-        d = JuniperSRXDriver(config_xml="<configuration/>")
+        d = JuniperSRXDriver(config_path=_fixture("juniper_actions.xml"))
         assert d._device_name == "juniper_srx"
 
 
@@ -92,7 +85,7 @@ class TestConstructorValidation:
 
 class TestReadOnly:
     def test_create_rule_raises(self):
-        d = JuniperSRXDriver(config_xml="<configuration/>")
+        d = JuniperSRXDriver(config_path=_fixture("juniper_actions.xml"))
         with pytest.raises(NotImplementedError, match="read-only"):
             d.create_rule(
                 FirewallRule(
@@ -107,12 +100,12 @@ class TestReadOnly:
             )
 
     def test_delete_rule_raises(self):
-        d = JuniperSRXDriver(config_xml="<configuration/>")
+        d = JuniperSRXDriver(config_path=_fixture("juniper_actions.xml"))
         with pytest.raises(NotImplementedError, match="read-only"):
             d.delete_rule("id-1")
 
     def test_commit_raises(self):
-        d = JuniperSRXDriver(config_xml="<configuration/>")
+        d = JuniperSRXDriver(config_path=_fixture("juniper_actions.xml"))
         with pytest.raises(NotImplementedError, match="read-only"):
             d.commit()
 
@@ -170,8 +163,11 @@ class TestFullPolicy:
 
     def test_logging(self, rules):
         assert rules[0].log_events is True   # allow-dns
+        assert rules[0].log_actions == ["session-init"]
         assert rules[1].log_events is False   # allow-web
+        assert rules[1].log_actions is None
         assert rules[2].log_events is True    # deny-all
+        assert rules[2].log_actions == ["session-init"]
 
     def test_vendor_and_device(self, rules):
         for r in rules:
@@ -236,6 +232,10 @@ class TestAddressResolution:
         assert r.source == ["mystery-host"]
         assert r.destination == ["unknown-net"]
         assert r.service == ["custom-undefined"]
+        assert r.service_details is not None
+        assert len(r.service_details) == 1
+        assert r.service_details[0].label == "custom-undefined"
+        assert r.service_details[0].resolved is False
 
 
 # =====================================================================
@@ -258,6 +258,13 @@ class TestApplicationResolution:
         # junos-http and junos-https are built-in, kept as-is
         assert "junos-http" in r.service
         assert "junos-https" in r.service
+        assert r.service_details is not None
+        assert len(r.service_details) == 3
+        detail_by_label = {detail.label: detail for detail in r.service_details}
+        assert detail_by_label["junos-http"].resolved is False
+        assert detail_by_label["junos-https"].resolved is False
+        assert detail_by_label["custom-app"].protocol == "tcp"
+        assert detail_by_label["custom-app"].destination_ports == ["8080"]
 
     def test_custom_app_resolved(self):
         d = JuniperSRXDriver(
@@ -268,6 +275,110 @@ class TestApplicationResolution:
         # allow-inbound-web -> web-apps -> custom-app -> tcp/8080
         r = rules[3]
         assert "tcp/8080" in r.service
+        assert r.service_details is not None
+        assert any(
+            detail.protocol == "tcp" and detail.destination_ports == ["8080"]
+            for detail in r.service_details
+        )
+
+
+class TestStructuredServiceResolution:
+    @pytest.fixture()
+    def rules(self):
+        d = JuniperSRXDriver(
+            config_path=_fixture("juniper_service_details.xml"),
+            device_name="srx",
+        )
+        return d.get_rules()
+
+    def test_any_rules_stay_simple(self):
+        d = JuniperSRXDriver(
+            config_path=_fixture("juniper_actions.xml"),
+            device_name="srx",
+        )
+        rules = d.get_rules()
+        r = rules[0]
+        assert r.service == ["any"]
+        assert r.service_details is not None
+        assert len(r.service_details) == 1
+        assert r.service_details[0].label == "any"
+        assert r.service_details[0].resolved is True
+
+    def test_real_shape_tcp_443(self, rules):
+        r = rules[0]
+        assert r.service == ["tcp/443"]
+        assert r.log_actions == ["session-init"]
+        assert r.service_details is not None
+        assert len(r.service_details) == 1
+        detail = r.service_details[0]
+        assert detail.label == "tcp-443"
+        assert detail.protocol == "tcp"
+        assert detail.destination_ports == ["443"]
+        assert detail.resolved is True
+
+    def test_real_shape_multiple_tcp_refs(self, rules):
+        r = rules[1]
+        assert r.service == ["tcp/23", "tcp/22"]
+        assert r.log_actions == ["session-init"]
+        assert r.service_details is not None
+        assert [detail.destination_ports for detail in r.service_details] == [
+            ["23"],
+            ["22"],
+        ]
+
+    def test_real_shape_icmp_dedup_and_detail_preservation(self, rules):
+        r = rules[2]
+        assert r.service == ["tcp/53", "udp/53", "icmp", "udp/33434-33534"]
+        assert r.log_actions == ["session-init"]
+        assert r.service_refs == ["tcp-53", "udp-53", "icmpv4"]
+        assert r.service_details is not None
+        assert len(r.service_details) == 5
+
+        icmp_details = [
+            detail for detail in r.service_details if detail.protocol == "icmp"
+        ]
+        assert len(icmp_details) == 2
+        assert {(detail.icmp_type, detail.icmp_code) for detail in icmp_details} == {
+            (8, 0),
+            (3, None),
+        }
+
+        traceroute_details = [
+            detail
+            for detail in r.service_details
+            if detail.protocol == "udp"
+            and detail.destination_ports == ["33434-33534"]
+        ]
+        assert len(traceroute_details) == 1
+
+    def test_richer_term_fields_preserved(self, rules):
+        r = rules[3]
+        assert r.service == ["tcp/1024-65535->111"]
+        assert r.service_details is not None
+        assert len(r.service_details) == 1
+        detail = r.service_details[0]
+        assert detail.protocol == "tcp"
+        assert detail.source_ports == ["1024-65535"]
+        assert detail.destination_ports == ["111"]
+        assert detail.application_protocol == "sunrpc"
+        assert detail.rpc_program_number == "100000"
+        assert detail.inactivity_timeout == "300"
+
+
+class TestLogActions:
+    def test_session_init_and_close_preserved(self):
+        d = JuniperSRXDriver(
+            config_path=_fixture("juniper_log_actions.xml"),
+            device_name="srx",
+        )
+        rules = d.get_rules()
+
+        assert rules[0].log_events is True
+        assert rules[0].log_actions == ["session-init"]
+        assert rules[1].log_events is True
+        assert rules[1].log_actions == ["session-init", "session-close"]
+        assert rules[2].log_events is False
+        assert rules[2].log_actions is None
 
 
 # =====================================================================
@@ -324,27 +435,14 @@ class TestRpcReplyWrapper:
 
 
 # =====================================================================
-# Raw XML mode
-# =====================================================================
-
-
-class TestRawXMLMode:
-    def test_raw_xml_string(self):
-        xml = _fixture("juniper_actions.xml").read_text()
-        d = JuniperSRXDriver(config_xml=xml, device_name="raw-test")
-        rules = d.get_rules()
-        assert len(rules) == 3
-        assert rules[0].device == "raw-test"
-
-
-# =====================================================================
 # Error handling
 # =====================================================================
 
 
 class TestErrorHandling:
-    def test_malformed_xml(self):
-        d = JuniperSRXDriver(config_xml="<not-valid-xml", device_name="bad")
+    def test_malformed_xml(self, tmp_path):
+        config_path = _write_xml(tmp_path, "bad.xml", "<not-valid-xml")
+        d = JuniperSRXDriver(config_path=config_path, device_name="bad")
         with pytest.raises(ValueError, match="Malformed XML"):
             d.get_rules()
 
@@ -353,8 +451,9 @@ class TestErrorHandling:
         with pytest.raises(OSError, match="Failed to read"):
             d.get_rules()
 
-    def test_empty_config_returns_empty(self):
-        d = JuniperSRXDriver(config_xml="<configuration/>")
+    def test_empty_config_returns_empty(self, tmp_path):
+        config_path = _write_xml(tmp_path, "empty.xml", "<configuration/>")
+        d = JuniperSRXDriver(config_path=config_path)
         assert d.get_rules() == []
 
 
@@ -432,21 +531,24 @@ class TestJSONExport:
     def test_export_fails_on_non_directory(self, tmp_path):
         file_path = tmp_path / "afile.txt"
         file_path.write_text("not a dir")
-        d = JuniperSRXDriver(config_xml="<configuration/>", device_name="x")
+        config_path = _write_xml(tmp_path, "empty.xml", "<configuration/>")
+        d = JuniperSRXDriver(config_path=config_path, device_name="x")
         with pytest.raises(ValueError, match="not a directory"):
             d.export_rules_json(file_path)
 
     def test_deterministic_filename(self, tmp_path):
+        config_path = _write_xml(tmp_path, "empty.xml", "<configuration/>")
         d = JuniperSRXDriver(
-            config_xml="<configuration/>",
+            config_path=config_path,
             device_name="srx-lab.corp",
         )
         result = d.export_rules_json(tmp_path)
         assert result.name == "srx-lab.corp.firewall_rules.json"
 
     def test_sanitized_filename(self, tmp_path):
+        config_path = _write_xml(tmp_path, "empty.xml", "<configuration/>")
         d = JuniperSRXDriver(
-            config_xml="<configuration/>",
+            config_path=config_path,
             device_name="fw 01/test",
         )
         result = d.export_rules_json(tmp_path)
@@ -468,6 +570,37 @@ class TestJSONExport:
         assert isinstance(data["rules"], list)
         assert len(data["rules"]) == 3
 
+    def test_json_payload_includes_service_details_and_log_actions(
+        self, tmp_path
+    ):
+        d = JuniperSRXDriver(
+            config_path=_fixture("juniper_service_details.xml"),
+            device_name="srx-test",
+        )
+        result = d.export_rules_json(tmp_path)
+        with open(result) as fp:
+            data = json.load(fp)
+
+        first_rule = data["rules"][0]
+        assert first_rule["service"] == ["tcp/443"]
+        assert first_rule["log_actions"] == ["session-init"]
+        assert first_rule["service_details"] == [
+            {
+                "label": "tcp-443",
+                "protocol": "tcp",
+                "source_ports": None,
+                "destination_ports": ["443"],
+                "application_protocol": None,
+                "icmp_type": None,
+                "icmp_code": None,
+                "icmp6_type": None,
+                "icmp6_code": None,
+                "rpc_program_number": None,
+                "inactivity_timeout": None,
+                "resolved": True,
+            }
+        ]
+
     def test_rule_order_matches_device_evaluation(self, tmp_path):
         d = JuniperSRXDriver(
             config_path=_fixture("juniper_full.xml"),
@@ -487,7 +620,8 @@ class TestJSONExport:
         ]
 
     def test_export_returns_path(self, tmp_path):
-        d = JuniperSRXDriver(config_xml="<configuration/>", device_name="x")
+        config_path = _write_xml(tmp_path, "empty.xml", "<configuration/>")
+        d = JuniperSRXDriver(config_path=config_path, device_name="x")
         result = d.export_rules_json(tmp_path)
         assert isinstance(result, Path)
 

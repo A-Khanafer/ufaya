@@ -43,9 +43,9 @@ User code
 
 ```
 User code
-  └─► JuniperSRXDriver(host=... | config_path=... | config_xml=...)
+  └─► JuniperSRXDriver(host=... | config_path=...)
         ├─ get_rules()           → list[FirewallRule]  (device evaluation order)
-        │    ├─ _load_xml()      → raw XML string (live / file / raw)
+        │    ├─ _load_xml()      → raw XML string (live / file)
         │    ├─ _parse_xml()     → ElementTree root (unwraps <rpc-reply>)
         │    └─ _extract_rules() → walks policies, resolves addresses & apps
         │         └─ Resolver    → expands address-books, address-sets, applications
