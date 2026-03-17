@@ -1,0 +1,46 @@
+<configuration>
+    <security>
+        <zones>
+            <security-zone>
+                <name>trust</name>
+                <address-book>
+                    <address>
+                        <name>host-a</name>
+                        <ip-prefix>10.0.0.1/32</ip-prefix>
+                    </address>
+                </address-book>
+            </security-zone>
+            <security-zone>
+                <name>untrust</name>
+            </security-zone>
+        </zones>
+        <policies>
+            <policy>
+                <from-zone-name>trust</from-zone-name>
+                <to-zone-name>untrust</to-zone-name>
+                <policy>
+                    <name>active-rule</name>
+                    <match>
+                        <source-address>host-a</source-address>
+                        <destination-address>any</destination-address>
+                        <application>any</application>
+                    </match>
+                    <then>
+                        <permit/>
+                    </then>
+                </policy>
+                <policy inactive="inactive">
+                    <name>disabled-rule</name>
+                    <match>
+                        <source-address>any</source-address>
+                        <destination-address>any</destination-address>
+                        <application>any</application>
+                    </match>
+                    <then>
+                        <deny/>
+                    </then>
+                </policy>
+            </policy>
+        </policies>
+    </security>
+</configuration>
