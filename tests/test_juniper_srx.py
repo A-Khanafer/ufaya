@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ufaya.drivers.juniper_srx import JuniperSRXDriver
+from ufaya.drivers.juniper import JuniperSRXDriver
 from ufaya.models.firewall_rule import FirewallRule
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -378,7 +378,7 @@ class TestLiveFetch:
             {"netmiko": MagicMock(ConnectHandler=mock_handler_cls)},
         ):
             import importlib  # noqa: I001
-            import ufaya.drivers.juniper_srx as mod
+            import ufaya.drivers.juniper.driver as mod
             importlib.reload(mod)
             d2 = mod.JuniperSRXDriver(
                 host="10.0.0.1", username="admin", password="secret"
@@ -404,7 +404,7 @@ class TestLiveFetch:
             {"netmiko": MagicMock(ConnectHandler=mock_handler_cls)},
         ):
             import importlib  # noqa: I001
-            import ufaya.drivers.juniper_srx as mod
+            import ufaya.drivers.juniper.driver as mod
             importlib.reload(mod)
             d2 = mod.JuniperSRXDriver(
                 host="10.0.0.1", username="admin", password="secret"

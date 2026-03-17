@@ -4,7 +4,7 @@ import pytest
 
 from ufaya.drivers.cisco import CiscoDriver
 from ufaya.drivers.fortinet import FortinetDriver
-from ufaya.drivers.juniper_srx import JuniperSRXDriver
+from ufaya.drivers.juniper import JuniperSRXDriver
 from ufaya.drivers.paloalto import PaloAltoDriver
 from ufaya.services.device_factory import get_firewall_driver
 
