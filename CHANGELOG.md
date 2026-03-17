@@ -35,6 +35,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 - `get_firewall_driver()` kwargs widened from `str` to `Any` to support Juniper's richer constructor
 - `JuniperSRXDriver` constructor now uses keyword-only arguments
+- Juniper driver refactored from single `drivers/juniper_srx.py` into `drivers/juniper/` package (`driver.py`, `resolver.py`, `xml_helpers.py`)
+- Import path changed from `ufaya.drivers.juniper_srx` to `ufaya.drivers.juniper`
+
+### Removed
+- `src/ufaya/drivers/juniper_srx.py` — replaced by `src/ufaya/drivers/juniper/` package
 
 
 ## [0.1.0]
