@@ -7,10 +7,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [0.2.0] - 2026-03-17
 
 ### Added
-- **Juniper SRX security-policy ingestion** — full read-only driver supporting three mutually exclusive source modes:
+- **Juniper SRX security-policy ingestion** — full read-only driver supporting two mutually exclusive source modes:
   - **Live** — connects to a device via Netmiko using `host`, `username`, `password`
   - **Offline file** — reads XML from a local path via `config_path`
-  - **Offline raw XML** — accepts an XML string via `config_xml`
 - `JuniperSRXDriver.get_rules()` returns `list[FirewallRule]` in device evaluation order
   - Zone-to-zone and global policies
   - Address-book and address-set resolution with recursive expansion and cycle protection
@@ -35,6 +34,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 - `get_firewall_driver()` kwargs widened from `str` to `Any` to support Juniper's richer constructor
 - `JuniperSRXDriver` constructor now uses keyword-only arguments
+- `JuniperSRXDriver` offline ingestion now accepts only `config_path`; raw XML string input via `config_xml` was removed
 - Juniper driver refactored from single `drivers/juniper_srx.py` into `drivers/juniper/` package (`driver.py`, `resolver.py`, `xml_helpers.py`)
 - Import path changed from `ufaya.drivers.juniper_srx` to `ufaya.drivers.juniper`
 
