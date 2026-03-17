@@ -4,7 +4,7 @@ import pytest
 
 from ufaya.drivers.cisco import CiscoDriver
 from ufaya.drivers.fortinet import FortinetDriver
-from ufaya.drivers.juniper_srx import JuniperSRXDriver
+from ufaya.drivers.juniper import JuniperSRXDriver
 from ufaya.drivers.paloalto import PaloAltoDriver
 from ufaya.services.device_factory import get_firewall_driver
 
@@ -13,13 +13,19 @@ from ufaya.services.device_factory import get_firewall_driver
     ("paloalto", PaloAltoDriver),
     ("fortinet", FortinetDriver),
     ("cisco", CiscoDriver),
-    ("juniper_srx", JuniperSRXDriver),
 ])
 def test_factory_returns_correct_driver(vendor, expected_cls):
     driver = get_firewall_driver(
         vendor, host="1.2.3.4", username="admin", password="secret"
     )
     assert isinstance(driver, expected_cls)
+
+
+def test_factory_returns_juniper_driver():
+    driver = get_firewall_driver(
+        "juniper_srx", host="1.2.3.4", username="admin", password="secret"
+    )
+    assert isinstance(driver, JuniperSRXDriver)
 
 
 def test_factory_raises_on_unknown_vendor():

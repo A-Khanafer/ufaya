@@ -13,61 +13,17 @@ The design follows the same architectural principle used by tools like NAPALM, w
 
 ## Supported Vendors
 
-| Vendor | Driver |
-|---|---|
-| Palo Alto | `paloalto` |
-| Fortinet | `fortinet` |
-| Cisco | `cisco` |
-| Juniper SRX | `juniper_srx` |
+| Vendor | Driver | Status |
+|---|---|---|
+| Juniper SRX | `juniper_srx` | Read-only ingestion + JSON export |
+| Palo Alto | `paloalto` | Skeleton |
+| Fortinet | `fortinet` | Skeleton |
+| Cisco | `cisco` | Skeleton |
 
 ## Installation
 
 ```bash
 pip install ufaya
-```
-
-## Quick Start
-
-```python
-from ufaya import get_firewall_driver, FirewallRule
-
-# Connect to a firewall
-driver = get_firewall_driver(
-    "paloalto",
-    host="192.168.1.1",
-    username="admin",
-    password="secret",
-)
-
-# Retrieve existing rules
-rules = driver.get_rules()
-
-# Create a new rule
-rule = FirewallRule(
-    vendor="paloalto",
-    device="fw-01",
-    name="allow-web",
-    source=["10.0.0.0/24"],
-    destination=["any"],
-    service=["tcp/443"],
-    action="allow",
-)
-driver.create_rule(rule)
-driver.commit()
-```
-
-## Development
-
-```bash
-git clone https://github.com/A-Khanafer/ufaya.git
-cd ufaya
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-pytest
-ruff check src/ tests/
-mypy src/ufaya
-python -m pip install build
-python -m build
 ```
 
 ## Contributing

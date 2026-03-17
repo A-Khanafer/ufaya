@@ -4,11 +4,11 @@ import pytest
 
 from ufaya.drivers.cisco import CiscoDriver
 from ufaya.drivers.fortinet import FortinetDriver
-from ufaya.drivers.juniper_srx import JuniperSRXDriver
 from ufaya.drivers.paloalto import PaloAltoDriver
 from ufaya.models.firewall_rule import FirewallRule
 
-DRIVER_CLASSES = [PaloAltoDriver, FortinetDriver, CiscoDriver, JuniperSRXDriver]
+# Only skeleton drivers — JuniperSRXDriver has its own test module.
+DRIVER_CLASSES = [PaloAltoDriver, FortinetDriver, CiscoDriver]
 
 SAMPLE_RULE = FirewallRule(
     vendor="paloalto",
