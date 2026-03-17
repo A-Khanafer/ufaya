@@ -1,6 +1,6 @@
-# UFAYA stands for:
+# UFAYA
 
-## Unified Firewall Abstraction Layer (vendor-Agnostic)
+# UFAYA stands for: Unified Firewall Abstraction laYer for Automation
 
 UFAYA is a Python SDK designed to provide a single, consistent interface for interacting with firewalls from multiple vendors. Instead of writing separate automation scripts for each firewall platform, UFAYA exposes a unified abstraction layer that normalizes firewall operations across different systems.
 
