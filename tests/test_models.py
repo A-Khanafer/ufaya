@@ -1,8 +1,15 @@
-"""Tests for the FirewallRule model."""
+"""Tests for firewall rule data models."""
 
 import pytest
 
-from ufaya.models.firewall_rule import FirewallRule, ServiceDetail
+from ufaya.models.firewall_rule import (
+    FirewallRule,
+    FirewallRuleDebug,
+    FirewallRuleRecord,
+    FirewallRuleTrace,
+    RuleContext,
+    ServiceDetail,
+)
 
 
 def make_rule(**overrides):
@@ -19,15 +26,50 @@ def make_rule(**overrides):
     return FirewallRule(**defaults)
 
 
+def make_context(**overrides):
+    defaults = dict(
+        context_id="inter_zone:trust->untrust",
+        scope="inter_zone",
+        priority_rank=2,
+        context_order=1,
+        rulebase="security_policies",
+        from_zone="trust",
+        to_zone="untrust",
+    )
+    defaults.update(overrides)
+    return RuleContext(**defaults)
+
+
+def make_record(**overrides):
+    defaults = dict(
+        rule=make_rule(sequence=3, vendor_rule_id="rule-3"),
+        context=make_context(),
+        trace=FirewallRuleTrace(
+            source_refs=["web-server"],
+            destination_refs=["any"],
+            service_refs=["junos-http"],
+            service_details=[
+                ServiceDetail(
+                    label="junos-http",
+                    protocol="tcp",
+                    destination_ports=["80"],
+                    resolved=False,
+                )
+            ],
+        ),
+        debug=FirewallRuleDebug(raw={"name": "allow-http"}),
+    )
+    defaults.update(overrides)
+    return FirewallRuleRecord(**defaults)
+
+
 def test_rule_defaults():
     rule = make_rule()
     assert rule.enabled is True
-    assert rule.id is None
-
-
-def test_rule_with_id():
-    rule = make_rule(id="rule-1")
-    assert rule.id == "rule-1"
+    assert rule.vendor_rule_id is None
+    assert rule.sequence is None
+    assert rule.description is None
+    assert rule.log_actions is None
 
 
 def test_rule_requires_action():
@@ -35,110 +77,90 @@ def test_rule_requires_action():
         make_rule(action=None)
 
 
-def test_rule_serialisation():
-    rule = make_rule(id="42")
-    data = rule.model_dump()
-    assert data["name"] == "allow-http"
-    assert data["action"] == "allow"
-
-
-# --- Extended field tests ---
-
-
-def test_new_fields_default_to_none():
-    """New optional fields default to None / False."""
-    rule = make_rule()
-    assert rule.sequence is None
-    assert rule.source_zones is None
-    assert rule.destination_zones is None
-    assert rule.source_refs is None
-    assert rule.destination_refs is None
-    assert rule.service_refs is None
-    assert rule.service_details is None
-    assert rule.description is None
-    assert rule.log_events is False
-    assert rule.log_actions is None
-    assert rule.raw is None
-
-
-def test_new_fields_can_be_set():
-    rule = make_rule(
-        sequence=1,
-        source_zones=["trust"],
-        destination_zones=["untrust"],
-        source_refs=["web-server"],
-        destination_refs=["any"],
-        service_refs=["junos-http"],
-        service_details=[
-            ServiceDetail(
-                label="junos-http",
-                protocol="tcp",
-                destination_ports=["80"],
-                resolved=False,
-            )
-        ],
-        description="test desc",
-        log_events=True,
-        log_actions=["session-init"],
-        raw={"name": "allow-http"},
+def test_context_can_capture_priority_metadata():
+    context = make_context(
+        scope="global",
+        priority_rank=3,
+        context_order=1,
+        context_id="global",
+        section="global",
+        from_zone=None,
+        to_zone=None,
     )
-    assert rule.sequence == 1
-    assert rule.source_zones == ["trust"]
-    assert rule.destination_zones == ["untrust"]
-    assert rule.source_refs == ["web-server"]
-    assert rule.destination_refs == ["any"]
-    assert rule.service_refs == ["junos-http"]
-    assert rule.service_details == [
-        ServiceDetail(
-            label="junos-http",
-            protocol="tcp",
-            destination_ports=["80"],
-            resolved=False,
-        )
-    ]
-    assert rule.description == "test desc"
-    assert rule.log_events is True
-    assert rule.log_actions == ["session-init"]
-    assert rule.raw == {"name": "allow-http"}
+    assert context.scope == "global"
+    assert context.priority_rank == 3
+    assert context.section == "global"
+    assert context.from_zone is None
+    assert context.to_zone is None
 
 
-def test_extended_fields_serialisation():
-    rule = make_rule(
-        sequence=5,
-        source_zones=["trust"],
-        service_details=[
-            ServiceDetail(
-                label="tcp-443",
-                protocol="tcp",
-                destination_ports=["443"],
-                resolved=True,
-            )
-        ],
-        log_actions=["session-init"],
-        description="desc",
-        raw={"key": "val"},
+def test_record_minimal_export_is_canonical_only():
+    record = make_record()
+    data = record.export_rule(
+        "minimal",
+        include_vendor=False,
+        include_device=False,
     )
-    data = rule.model_dump()
-    assert data["sequence"] == 5
-    assert data["source_zones"] == ["trust"]
+
+    assert data == {
+        "vendor_rule_id": "rule-3",
+        "name": "allow-http",
+        "source": ["10.0.0.0/8"],
+        "destination": ["any"],
+        "service": ["tcp/80"],
+        "action": "allow",
+        "enabled": True,
+        "sequence": 3,
+    }
+
+
+def test_record_enriched_export_includes_traceability():
+    record = make_record()
+    data = record.export_rule("enriched", include_context=True)
+
+    assert data["vendor"] == "paloalto"
+    assert data["device"] == "fw-01"
+    assert data["context"]["context_id"] == "inter_zone:trust->untrust"
+    assert data["source_refs"] == ["web-server"]
     assert data["service_details"] == [
         {
-            "label": "tcp-443",
+            "label": "junos-http",
             "protocol": "tcp",
-            "source_ports": None,
-            "destination_ports": ["443"],
-            "application_protocol": None,
-            "icmp_type": None,
-            "icmp_code": None,
-            "icmp6_type": None,
-            "icmp6_code": None,
-            "rpc_program_number": None,
-            "inactivity_timeout": None,
-            "resolved": True,
+            "destination_ports": ["80"],
+            "resolved": False,
         }
     ]
-    assert data["log_actions"] == ["session-init"]
-    assert data["description"] == "desc"
-    assert data["raw"] == {"key": "val"}
-    # Unset optional fields
-    assert data["destination_zones"] is None
+    assert "raw" not in data
+
+
+def test_record_debug_export_includes_raw_debug_payload():
+    record = make_record()
+    data = record.export_rule("debug")
+
+    assert data["raw"] == {"name": "allow-http"}
+    assert data["service_refs"] == ["junos-http"]
+
+
+def test_record_export_omits_none_values():
+    record = make_record(
+        rule=make_rule(
+            vendor_rule_id=None,
+            sequence=None,
+            description=None,
+            log_actions=None,
+        ),
+        trace=FirewallRuleTrace(),
+        debug=None,
+    )
+    data = record.export_rule("minimal")
+
+    assert "vendor_rule_id" not in data
+    assert "sequence" not in data
+    assert "description" not in data
+    assert "log_actions" not in data
+
+
+def test_invalid_export_mode_raises():
+    record = make_record()
+    with pytest.raises(ValueError, match="Unsupported export mode"):
+        record.export_rule("verbose")

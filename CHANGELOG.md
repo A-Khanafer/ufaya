@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0]
+
+### Added
+
+- Shared `RuleContext`, `FirewallRuleTrace`, `FirewallRuleDebug`, and `FirewallRuleRecord` models for canonical rule data plus optional trace/debug sections.
+- Juniper fixture coverage for priority-ordered intra-zone, inter-zone, and global policy export.
+
+### Changed
+
+- `FirewallDriver.get_rules()` and `ufaya.firewall.get_rules()` now return `list[FirewallRuleRecord]` instead of bare `FirewallRule` objects.
+- Juniper SRX JSON export now groups rules by evaluation context, adds `minimal`, `enriched`, and `debug` export modes, and emits explicit evaluation metadata.
+- Juniper SRX rule sequencing now reflects top-down order within each policy context, and rules now carry `vendor_rule_id` instead of a synthetic flat export `id`.
+- Canonical `FirewallRule` output is now leaner, with zones moved into context metadata and refs/debug payloads moved into explicit trace/debug wrappers.
+
 ## [0.3.0]
 
 ### Added
@@ -64,7 +78,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `get_firewall_driver()` factory for vendor-based driver selection.
 - PEP 561 typing marker, test suite, and CI/dev tooling configuration.
 
-[Unreleased]: https://github.com/A-Khanafer/ufaya/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/A-Khanafer/ufaya/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/A-Khanafer/ufaya/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/A-Khanafer/ufaya/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/A-Khanafer/ufaya/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/A-Khanafer/ufaya/releases/tag/v0.1.0

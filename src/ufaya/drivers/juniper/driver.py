@@ -6,9 +6,10 @@ Supports two source modes:
   configuration as XML.
 * **offline file** — reads XML from a local file path.
 
-The driver exposes :meth:`get_rules` (returning ``list[FirewallRule]`` in
-device evaluation order) and :meth:`export_rules_json` (writing one
-deterministic JSON file per device).
+The driver exposes :meth:`get_rules` (returning
+``list[FirewallRuleRecord]`` ordered by policy-context priority and then
+top-down rule order within each context) and :meth:`export_rules_json`
+(writing one deterministic JSON file per device).
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ import os
 import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import Any
 
 from ufaya.drivers.juniper.resolver import Resolver, normalize_action
 from ufaya.drivers.juniper.xml_helpers import (
@@ -29,7 +31,31 @@ from ufaya.drivers.juniper.xml_helpers import (
     text,
 )
 from ufaya.firewall.base import FirewallDriver
-from ufaya.models.firewall_rule import FirewallRule
+from ufaya.models.firewall_rule import (
+    FirewallRule,
+    FirewallRuleDebug,
+    FirewallRuleRecord,
+    FirewallRuleTrace,
+    RuleContext,
+    normalize_export_mode,
+)
+
+_CONTEXT_PRIORITY = {
+    "intra_zone": 1,
+    "inter_zone": 2,
+    "global": 3,
+}
+
+_EVALUATION_MODEL = {
+    "context_selection_order": [
+        "intra_zone",
+        "inter_zone",
+        "global",
+        "implicit_default_deny",
+    ],
+    "rule_order_within_context": "top_down_first_match",
+    "default_action": "deny",
+}
 
 
 class JuniperSRXDriver(FirewallDriver):
@@ -93,11 +119,19 @@ class JuniperSRXDriver(FirewallDriver):
 
     # -- FirewallDriver ABC ------------------------------------------------
 
-    def get_rules(self) -> list[FirewallRule]:
-        """Return all security-policy rules in device evaluation order."""
+    def get_rules(self) -> list[FirewallRuleRecord]:
+        """Return all security-policy rules with evaluation context."""
         xml_str = self._load_xml()
         root = self._parse_xml(xml_str)
-        return self._extract_rules(root)
+        rules = self._extract_rules(root)
+        return sorted(
+            rules,
+            key=lambda record: (
+                record.context.priority_rank,
+                record.context.context_order,
+                record.rule.sequence or 0,
+            ),
+        )
 
     def create_rule(self, rule: FirewallRule) -> None:
         raise NotImplementedError(
@@ -119,7 +153,9 @@ class JuniperSRXDriver(FirewallDriver):
 
     # -- JSON export (Juniper-specific) ------------------------------------
 
-    def export_rules_json(self, output_dir: str | Path) -> Path:
+    def export_rules_json(
+        self, output_dir: str | Path, mode: str = "enriched"
+    ) -> Path:
         """Export parsed rules to a deterministic JSON file.
 
         Parameters
@@ -127,6 +163,8 @@ class JuniperSRXDriver(FirewallDriver):
         output_dir:
             Directory in which to write the JSON file.  Created with
             ``parents=True, exist_ok=True`` if it does not exist.
+        mode:
+            One of ``minimal``, ``enriched``, or ``debug``.
 
         Returns
         -------
@@ -136,10 +174,12 @@ class JuniperSRXDriver(FirewallDriver):
         Raises
         ------
         ValueError
-            If *output_dir* exists but is not a directory.
+            If *output_dir* exists but is not a directory, or *mode* is
+            unsupported.
         OSError
             On write failures.
         """
+        export_mode = normalize_export_mode(mode)
         out = Path(output_dir)
         if out.exists() and not out.is_dir():
             raise ValueError(
@@ -151,9 +191,11 @@ class JuniperSRXDriver(FirewallDriver):
         payload = {
             "vendor": "juniper_srx",
             "device": self._device_name,
+            "schema_version": 2,
+            "mode": export_mode,
             "rule_count": len(rules),
-            "order": "device_evaluation",
-            "rules": [r.model_dump() for r in rules],
+            "evaluation_model": _EVALUATION_MODEL,
+            "contexts": self._serialize_contexts(rules, export_mode),
         }
 
         safe_name = sanitize_device_name(self._device_name)
@@ -244,8 +286,8 @@ class JuniperSRXDriver(FirewallDriver):
 
         return root
 
-    def _extract_rules(self, root: ET.Element) -> list[FirewallRule]:
-        """Walk security policies and return rules in evaluation order."""
+    def _extract_rules(self, root: ET.Element) -> list[FirewallRuleRecord]:
+        """Walk security policies and return context-aware rules."""
         resolver = Resolver(root)
 
         security = Resolver.find_security(root)
@@ -256,39 +298,93 @@ class JuniperSRXDriver(FirewallDriver):
         if policies_el is None:
             return []
 
-        rules: list[FirewallRule] = []
-        seq = 0
+        rules: list[FirewallRuleRecord] = []
+        context_counts = {
+            "intra_zone": 0,
+            "inter_zone": 0,
+            "global": 0,
+        }
 
         for pair in findall(policies_el, "policy"):
             from_zone = text(find(pair, "from-zone-name")) or "unknown"
             to_zone = text(find(pair, "to-zone-name")) or "unknown"
+            scope = "intra_zone" if from_zone == to_zone else "inter_zone"
+            context_counts[scope] += 1
+            context = self._build_context(
+                scope=scope,
+                context_order=context_counts[scope],
+                from_zone=from_zone,
+                to_zone=to_zone,
+            )
 
-            for policy in findall(pair, "policy"):
-                seq += 1
-                rule = self._policy_to_rule(
-                    policy, resolver, seq, [from_zone], [to_zone]
+            for sequence, policy in enumerate(findall(pair, "policy"), start=1):
+                rules.append(
+                    self._policy_to_rule_record(
+                        policy,
+                        resolver,
+                        sequence,
+                        context,
+                    )
                 )
-                rules.append(rule)
 
         global_el = find(policies_el, "global")
         if global_el is not None:
-            for policy in findall(global_el, "policy"):
-                seq += 1
-                rule = self._policy_to_rule(
-                    policy, resolver, seq, ["global"], ["global"]
+            context_counts["global"] += 1
+            context = self._build_context(
+                scope="global",
+                context_order=context_counts["global"],
+            )
+            for sequence, policy in enumerate(findall(global_el, "policy"), start=1):
+                rules.append(
+                    self._policy_to_rule_record(
+                        policy,
+                        resolver,
+                        sequence,
+                        context,
+                    )
                 )
-                rules.append(rule)
 
         return rules
 
-    def _policy_to_rule(
+    @staticmethod
+    def _build_context(
+        *,
+        scope: str,
+        context_order: int,
+        from_zone: str | None = None,
+        to_zone: str | None = None,
+    ) -> RuleContext:
+        if scope == "global":
+            context_id = "global"
+            section = "global"
+        elif scope == "intra_zone":
+            assert from_zone is not None
+            context_id = f"intra_zone:{from_zone}"
+            section = None
+        else:
+            assert from_zone is not None
+            assert to_zone is not None
+            context_id = f"inter_zone:{from_zone}->{to_zone}"
+            section = None
+
+        return RuleContext(
+            context_id=context_id,
+            scope=scope,
+            priority_rank=_CONTEXT_PRIORITY[scope],
+            context_order=context_order,
+            rulebase="security_policies",
+            section=section,
+            from_zone=from_zone,
+            to_zone=to_zone,
+        )
+
+    def _policy_to_rule_record(
         self,
         policy: ET.Element,
         resolver: Resolver,
         sequence: int,
-        src_zones: list[str],
-        dst_zones: list[str],
-    ) -> FirewallRule:
+        context: RuleContext,
+    ) -> FirewallRuleRecord:
         name = text(find(policy, "name")) or f"policy-{sequence}"
         description = text(find(policy, "description"))
 
@@ -319,18 +415,25 @@ class JuniperSRXDriver(FirewallDriver):
                 if t:
                     svc_refs.append(t)
 
-        source = resolver.resolve_addresses(src_refs, src_zones)
-        destination = resolver.resolve_addresses(dst_refs, dst_zones)
+        if context.scope == "global":
+            source_zones = ["global"]
+            destination_zones = ["global"]
+        else:
+            assert context.from_zone is not None
+            assert context.to_zone is not None
+            source_zones = [context.from_zone]
+            destination_zones = [context.to_zone]
+
+        source = resolver.resolve_addresses(src_refs, source_zones)
+        destination = resolver.resolve_addresses(dst_refs, destination_zones)
         service, service_details = resolver.resolve_applications(svc_refs)
         action = normalize_action(policy)
 
-        log_events = False
         log_actions: list[str] | None = None
         then = find(policy, "then")
         if then is not None:
             log = find(then, "log")
             if log is not None:
-                log_events = True
                 log_actions = []
                 for child in log:
                     tag = child.tag
@@ -344,25 +447,56 @@ class JuniperSRXDriver(FirewallDriver):
 
         raw = elem_to_dict(policy)
 
-        return FirewallRule(
-            id=f"{'-'.join(src_zones)}/{'-'.join(dst_zones)}/{name}",
-            vendor="juniper_srx",
-            device=self._device_name,
-            name=name,
-            source=source,
-            destination=destination,
-            service=service,
-            action=action,
-            enabled=enabled,
-            sequence=sequence,
-            source_zones=src_zones,
-            destination_zones=dst_zones,
-            source_refs=src_refs,
-            destination_refs=dst_refs,
-            service_refs=svc_refs,
-            service_details=service_details,
-            description=description,
-            log_events=log_events,
-            log_actions=log_actions,
-            raw=raw,
+        return FirewallRuleRecord(
+            rule=FirewallRule(
+                vendor="juniper_srx",
+                device=self._device_name,
+                vendor_rule_id=name,
+                name=name,
+                source=source,
+                destination=destination,
+                service=service,
+                action=action,
+                enabled=enabled,
+                sequence=sequence,
+                description=description,
+                log_actions=log_actions,
+            ),
+            context=context,
+            trace=FirewallRuleTrace(
+                source_refs=src_refs,
+                destination_refs=dst_refs,
+                service_refs=svc_refs,
+                service_details=service_details,
+            ),
+            debug=FirewallRuleDebug(raw=raw),
         )
+
+    @staticmethod
+    def _serialize_contexts(
+        rules: list[FirewallRuleRecord], mode: str
+    ) -> list[dict[str, Any]]:
+        contexts: list[dict[str, Any]] = []
+        grouped: dict[str, dict[str, Any]] = {}
+
+        for record in rules:
+            context_id = record.context.context_id
+            if context_id not in grouped:
+                grouped[context_id] = {
+                    "context": record.context.model_dump(exclude_none=True),
+                    "rule_count": 0,
+                    "rules": [],
+                }
+                contexts.append(grouped[context_id])
+
+            entry = grouped[context_id]
+            entry["rules"].append(
+                record.export_rule(
+                    mode,
+                    include_vendor=False,
+                    include_device=False,
+                )
+            )
+            entry["rule_count"] += 1
+
+        return contexts
