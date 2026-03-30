@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from ufaya.firewall.base import FirewallDriver
-from ufaya.models.firewall_rule import FirewallRule
+from ufaya.models.firewall_rule import FirewallRule, FirewallRuleRecord
 
 
 class PaloAltoDriver(FirewallDriver):
@@ -12,7 +12,7 @@ class PaloAltoDriver(FirewallDriver):
         self.username = username
         self.password = password
 
-    def get_rules(self) -> list[FirewallRule]:
+    def get_rules(self) -> list[FirewallRuleRecord]:
         return []
 
     def create_rule(self, rule: FirewallRule) -> None:

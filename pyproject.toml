@@ -8,14 +8,13 @@ dynamic = ["version"]
 description = "Unified Firewall Abstraction laYer for Automation"
 readme = "README.md"
 authors = [{name = "Ahmad Khanafer", email = "ahmad.khanafer.191@gmail.com"}]
-license = { text = "MIT" }
+license = "MIT"
 requires-python = ">=3.10"
 keywords = ["firewall", "automation", "network", "abstraction-layer", "unified"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: System Administrators",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",

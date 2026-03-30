@@ -15,7 +15,7 @@ The design follows the same architectural principle used by tools like NAPALM, w
 
 | Vendor | Driver | Status |
 |---|---|---|
-| Juniper SRX | `juniper_srx` | Read-only ingestion + JSON export |
+| Juniper SRX | `juniper_srx` | Read-only ingestion + context-grouped JSON export |
 | Palo Alto | `paloalto` | Skeleton |
 | Fortinet | `fortinet` | Skeleton |
 | Cisco | `cisco` | Skeleton |

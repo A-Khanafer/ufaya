@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from ufaya.models.firewall_rule import FirewallRule
+from ufaya.models.firewall_rule import FirewallRule, FirewallRuleRecord
 
 
 class FirewallDriver(ABC):
     """Abstract base class for all firewall vendor drivers."""
 
     @abstractmethod
-    def get_rules(self) -> list[FirewallRule]:
+    def get_rules(self) -> list[FirewallRuleRecord]:
         """Return all firewall rules from the device."""
 
     @abstractmethod
