@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0]
+
+### Added
+
+- Canonical `FirewallRule.hit_count` support so drivers can expose per-policy counters in the shared rule model.
+
+### Changed
+
+- Juniper SRX live mode now performs an additional operational fetch to attach policy hit counts to parsed rules and exported JSON when the device provides them.
+- Juniper SRX JSON export schema advanced to version `3`, with per-rule `hit_count` fields and an optional top-level `hit_counts_collected_at` UTC timestamp for live hit-count snapshots.
+- File-backed Juniper exports now emit `hit_count: null` for each rule when counters are unavailable, preserving a stable JSON shape across export modes.
+
 ## [0.4.0]
 
 ### Added
@@ -78,7 +90,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `get_firewall_driver()` factory for vendor-based driver selection.
 - PEP 561 typing marker, test suite, and CI/dev tooling configuration.
 
-[Unreleased]: https://github.com/A-Khanafer/ufaya/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/A-Khanafer/ufaya/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/A-Khanafer/ufaya/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/A-Khanafer/ufaya/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/A-Khanafer/ufaya/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/A-Khanafer/ufaya/compare/v0.1.0...v0.2.0

@@ -11,7 +11,7 @@ src/ufaya/
 ├── firewall/
 │   └── base.py          # FirewallDriver ABC — the single interface all drivers implement
 ├── models/
-│   └── firewall_rule.py # Canonical rule, context, trace, and record Pydantic models
+│   └── firewall_rule.py # Canonical rule, context, trace, hit-count, and record Pydantic models
 ├── drivers/
 │   ├── paloalto.py      # Palo Alto Networks driver (skeleton)
 │   ├── fortinet.py      # Fortinet FortiGate driver (skeleton)
@@ -45,17 +45,19 @@ User code
 User code
   └─► JuniperSRXDriver(host=... | config_path=...)
         ├─ get_rules()           → list[FirewallRuleRecord]
-        │    ├─ _load_xml()      → raw XML string (live / file)
-        │    ├─ _parse_xml()     → ElementTree root (unwraps <rpc-reply>)
-        │    └─ _extract_rules() → walks contexts, resolves addresses & apps
+        │    ├─ _load_rule_data()→ config XML + optional live hit-count snapshot
+        │    ├─ _parse_xml()     → ElementTree root (config or operational XML)
+        │    └─ _extract_rules() → walks contexts, resolves addresses/apps, applies hit counts
         │         └─ Resolver    → expands address-books, address-sets, applications
-        └─ export_rules_json()   → Path  (atomic JSON write, minimal/enriched/debug modes)
+        └─ export_rules_json()   → Path  (atomic schema v3 JSON write, minimal/enriched/debug modes)
 ```
 
 ## Design principles
 
 - **Single interface**: all drivers expose the same four methods — callers never need to know the vendor.
-- **Pydantic models**: `FirewallRuleRecord` wraps canonical rule data with evaluation context plus optional trace/debug sections.
+- **Pydantic models**: `FirewallRuleRecord` wraps canonical rule data, including optional `hit_count`, with evaluation context plus optional trace/debug sections.
 - **No coupling**: drivers only import from `firewall.base` and `models`; they do not import each other.
 - **Easy extension**: add a new vendor by subclassing `FirewallDriver` and registering it in `device_factory.py`.
 - **Vendor packages**: complex drivers (e.g., Juniper) are split into sub-packages to keep modules focused and testable.
+
+For Juniper SRX, live-mode exports can enrich the canonical rule model with operational hit-count data. When that snapshot is available, the JSON export also records a top-level `hit_counts_collected_at` UTC timestamp; file-backed exports keep the same per-rule shape with `hit_count: null`.
