@@ -61,9 +61,11 @@ FirewallRule(
 )
 ```
 
+Optional canonical metadata such as `vendor_rule_id`, `sequence`, `description`, `log_actions`, and `hit_count` should be populated when the vendor exposes them.
+
 ## Pull requests
 
 - Keep PRs focused: one feature or fix per PR.
 - Include tests for any new behaviour.
 - Make sure `pytest`, `ruff`, and `mypy` all pass before opening a PR.
-- Update `README.md`, `CONTRIBUTING.md`, or `CHANGELOG.md` when the public API, workflow, or release behaviour changes.
+- Update `README.md`, `ARCHITECTURE.md`, `CONTRIBUTING.md`, or `CHANGELOG.md` when the public API, JSON schema, workflow, or release behaviour changes.
