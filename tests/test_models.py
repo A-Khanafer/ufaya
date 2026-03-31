@@ -68,6 +68,7 @@ def test_rule_defaults():
     assert rule.enabled is True
     assert rule.vendor_rule_id is None
     assert rule.sequence is None
+    assert rule.hit_count is None
     assert rule.description is None
     assert rule.log_actions is None
 
@@ -111,6 +112,7 @@ def test_record_minimal_export_is_canonical_only():
         "action": "allow",
         "enabled": True,
         "sequence": 3,
+        "hit_count": None,
     }
 
 
@@ -141,6 +143,13 @@ def test_record_debug_export_includes_raw_debug_payload():
     assert data["service_refs"] == ["junos-http"]
 
 
+def test_record_export_preserves_numeric_hit_count():
+    record = make_record(rule=make_rule(hit_count=42))
+    data = record.export_rule("minimal")
+
+    assert data["hit_count"] == 42
+
+
 def test_record_export_omits_none_values():
     record = make_record(
         rule=make_rule(
@@ -156,6 +165,7 @@ def test_record_export_omits_none_values():
 
     assert "vendor_rule_id" not in data
     assert "sequence" not in data
+    assert data["hit_count"] is None
     assert "description" not in data
     assert "log_actions" not in data
 
