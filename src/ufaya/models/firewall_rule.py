@@ -55,6 +55,7 @@ class FirewallRule(BaseModel):
     enabled: bool = True
 
     sequence: int | None = None
+    hit_count: int | None = None
     description: str | None = None
     log_actions: list[str] | None = None
 
@@ -94,6 +95,7 @@ class FirewallRuleRecord(BaseModel):
         export_mode = normalize_export_mode(mode)
 
         payload = self.rule.model_dump(exclude_none=True)
+        payload["hit_count"] = self.rule.hit_count
         if not include_vendor:
             payload.pop("vendor", None)
         if not include_device:

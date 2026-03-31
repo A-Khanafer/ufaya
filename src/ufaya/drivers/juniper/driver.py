@@ -18,6 +18,7 @@ import json
 import os
 import tempfile
 import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +27,7 @@ from ufaya.drivers.juniper.xml_helpers import (
     JUNOS_NS,
     elem_to_dict,
     find,
+    find_recursive,
     findall,
     sanitize_device_name,
     text,
@@ -56,6 +58,12 @@ _EVALUATION_MODEL = {
     "rule_order_within_context": "top_down_first_match",
     "default_action": "deny",
 }
+
+_CONFIG_COMMAND = "show configuration | display xml | no-more"
+_HIT_COUNT_COMMAND = "show security policies hit-count | display xml | no-more"
+_GLOBAL_ZONE_TOKENS = {"global", "junos-global"}
+
+PolicyHitCountKey = tuple[str, str | None, str | None, str]
 
 
 class JuniperSRXDriver(FirewallDriver):
@@ -116,14 +124,17 @@ class JuniperSRXDriver(FirewallDriver):
             self._config_path = Path(config_path)  # type: ignore[arg-type]
 
         self._device_name = device_name or (host if host else "juniper_srx")
+        self._last_hit_counts_collected_at: str | None = None
 
     # -- FirewallDriver ABC ------------------------------------------------
 
     def get_rules(self) -> list[FirewallRuleRecord]:
         """Return all security-policy rules with evaluation context."""
-        xml_str = self._load_xml()
-        root = self._parse_xml(xml_str)
-        rules = self._extract_rules(root)
+        self._last_hit_counts_collected_at = None
+        xml_str, hit_count_lookup, collected_at = self._load_rule_data()
+        self._last_hit_counts_collected_at = collected_at
+        root = self._parse_xml(xml_str, unwrap_configuration=True)
+        rules = self._extract_rules(root, hit_count_lookup)
         return sorted(
             rules,
             key=lambda record: (
@@ -188,15 +199,21 @@ class JuniperSRXDriver(FirewallDriver):
         out.mkdir(parents=True, exist_ok=True)
 
         rules = self.get_rules()
-        payload = {
+        payload: dict[str, Any] = {
             "vendor": "juniper_srx",
             "device": self._device_name,
-            "schema_version": 2,
-            "mode": export_mode,
-            "rule_count": len(rules),
-            "evaluation_model": _EVALUATION_MODEL,
-            "contexts": self._serialize_contexts(rules, export_mode),
         }
+        if self._last_hit_counts_collected_at is not None:
+            payload["hit_counts_collected_at"] = self._last_hit_counts_collected_at
+        payload.update(
+            {
+                "schema_version": 3,
+                "mode": export_mode,
+                "rule_count": len(rules),
+                "evaluation_model": _EVALUATION_MODEL,
+                "contexts": self._serialize_contexts(rules, export_mode),
+            }
+        )
 
         safe_name = sanitize_device_name(self._device_name)
         target = out / f"{safe_name}.firewall_rules.json"
@@ -220,13 +237,17 @@ class JuniperSRXDriver(FirewallDriver):
 
     # -- Internal helpers --------------------------------------------------
 
-    def _load_xml(self) -> str:
-        """Retrieve the raw XML configuration string."""
+    def _load_rule_data(
+        self,
+    ) -> tuple[str, dict[PolicyHitCountKey, int], str | None]:
+        """Retrieve the raw configuration plus any live hit-count snapshot."""
         if self._mode == "live":
-            return self._fetch_live()
-        return self._read_file()
+            return self._fetch_live_data()
+        return self._read_file(), {}, None
 
-    def _fetch_live(self) -> str:
+    def _fetch_live_data(
+        self,
+    ) -> tuple[str, dict[PolicyHitCountKey, int], str | None]:
         try:
             from netmiko import ConnectHandler  # type: ignore[import-untyped]
         except ImportError as exc:
@@ -243,14 +264,35 @@ class JuniperSRXDriver(FirewallDriver):
                 "password": self._password,
             }
             with ConnectHandler(**device) as conn:
-                output: str = conn.send_command(
-                    "show configuration | display xml | no-more"
-                )
-            return output
+                config_output: str = conn.send_command(_CONFIG_COMMAND)
+                try:
+                    hit_count_output: str | None = conn.send_command(
+                        _HIT_COUNT_COMMAND
+                    )
+                except Exception:
+                    hit_count_output = None
         except Exception as exc:
             raise ConnectionError(
                 f"Failed to fetch configuration from {self._host}: {exc}"
             ) from exc
+
+        if not hit_count_output:
+            return config_output, {}, None
+
+        try:
+            hit_count_root = self._parse_xml(
+                hit_count_output, unwrap_configuration=False
+            )
+            hit_count_lookup, parsed = self._parse_hit_count_lookup(
+                hit_count_root
+            )
+        except ValueError:
+            return config_output, {}, None
+
+        if not parsed:
+            return config_output, {}, None
+
+        return config_output, hit_count_lookup, self._utc_now()
 
     def _read_file(self) -> str:
         assert self._config_path is not None
@@ -263,14 +305,19 @@ class JuniperSRXDriver(FirewallDriver):
             ) from exc
 
     @staticmethod
-    def _parse_xml(xml_str: str) -> ET.Element:
-        """Parse XML string, unwrapping ``<rpc-reply>`` if present."""
+    def _parse_xml(
+        xml_str: str, *, unwrap_configuration: bool
+    ) -> ET.Element:
+        """Parse XML and optionally unwrap ``<configuration>`` from ``<rpc-reply>``."""
         try:
             root = ET.fromstring(xml_str)
         except ET.ParseError as exc:
             raise ValueError(
                 f"Malformed XML configuration: {exc}"
             ) from exc
+
+        if not unwrap_configuration:
+            return root
 
         local_tag = root.tag
         if "}" in local_tag:
@@ -286,7 +333,11 @@ class JuniperSRXDriver(FirewallDriver):
 
         return root
 
-    def _extract_rules(self, root: ET.Element) -> list[FirewallRuleRecord]:
+    def _extract_rules(
+        self,
+        root: ET.Element,
+        hit_count_lookup: dict[PolicyHitCountKey, int],
+    ) -> list[FirewallRuleRecord]:
         """Walk security policies and return context-aware rules."""
         resolver = Resolver(root)
 
@@ -324,6 +375,7 @@ class JuniperSRXDriver(FirewallDriver):
                         resolver,
                         sequence,
                         context,
+                        hit_count_lookup,
                     )
                 )
 
@@ -341,6 +393,7 @@ class JuniperSRXDriver(FirewallDriver):
                         resolver,
                         sequence,
                         context,
+                        hit_count_lookup,
                     )
                 )
 
@@ -384,9 +437,13 @@ class JuniperSRXDriver(FirewallDriver):
         resolver: Resolver,
         sequence: int,
         context: RuleContext,
+        hit_count_lookup: dict[PolicyHitCountKey, int],
     ) -> FirewallRuleRecord:
         name = text(find(policy, "name")) or f"policy-{sequence}"
         description = text(find(policy, "description"))
+        hit_count = hit_count_lookup.get(
+            self._policy_hit_count_key(context, name)
+        )
 
         enabled = True
         inactive_attr = policy.attrib.get("inactive", "")
@@ -459,6 +516,7 @@ class JuniperSRXDriver(FirewallDriver):
                 action=action,
                 enabled=enabled,
                 sequence=sequence,
+                hit_count=hit_count,
                 description=description,
                 log_actions=log_actions,
             ),
@@ -500,3 +558,120 @@ class JuniperSRXDriver(FirewallDriver):
             entry["rule_count"] += 1
 
         return contexts
+
+    @staticmethod
+    def _utc_now() -> str:
+        return (
+            datetime.now(timezone.utc)
+            .replace(microsecond=0)
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
+
+    @staticmethod
+    def _policy_hit_count_key(
+        context: RuleContext, policy_name: str
+    ) -> PolicyHitCountKey:
+        if context.scope == "global":
+            return ("global", None, None, policy_name)
+        return (
+            context.scope,
+            context.from_zone,
+            context.to_zone,
+            policy_name,
+        )
+
+    @classmethod
+    def _parse_hit_count_lookup(
+        cls, root: ET.Element
+    ) -> tuple[dict[PolicyHitCountKey, int], bool]:
+        lookup: dict[PolicyHitCountKey, int] = {}
+        candidates = [
+            *find_recursive(root, "policy-information"),
+            *find_recursive(root, "policy-hit-count-information"),
+        ]
+        parsed = bool(
+            candidates
+            or find_recursive(root, "policy-count")
+            or find_recursive(root, "number-of-policy")
+        )
+
+        for candidate in candidates:
+            entry = cls._extract_hit_count_entry(candidate)
+            if entry is None:
+                continue
+            key, count = entry
+            lookup[key] = count
+
+        return lookup, parsed
+
+    @classmethod
+    def _extract_hit_count_entry(
+        cls, element: ET.Element
+    ) -> tuple[PolicyHitCountKey, int] | None:
+        policy_name = cls._first_text(
+            element, "policy-name", "name", recursive=True
+        )
+        count_text = cls._first_text(
+            element,
+            "policy-count",
+            "hit-count",
+            "count",
+            recursive=True,
+        )
+        if policy_name is None or count_text is None:
+            return None
+
+        try:
+            count = int(count_text.replace(",", "").strip())
+        except ValueError:
+            return None
+
+        from_zone = cls._first_text(
+            element, "from-zone-name", "from-zone", recursive=True
+        )
+        to_zone = cls._first_text(
+            element, "to-zone-name", "to-zone", recursive=True
+        )
+        if cls._is_global_policy(from_zone, to_zone):
+            key: PolicyHitCountKey = ("global", None, None, policy_name)
+        elif from_zone is None or to_zone is None:
+            return None
+        else:
+            scope = "intra_zone" if from_zone == to_zone else "inter_zone"
+            key = (scope, from_zone, to_zone, policy_name)
+
+        return key, count
+
+    @staticmethod
+    def _is_global_policy(
+        from_zone: str | None, to_zone: str | None
+    ) -> bool:
+        if from_zone is None and to_zone is None:
+            return True
+        if from_zone is None or to_zone is None:
+            return False
+        return (
+            from_zone.strip().lower() in _GLOBAL_ZONE_TOKENS
+            and to_zone.strip().lower() in _GLOBAL_ZONE_TOKENS
+        )
+
+    @staticmethod
+    def _first_text(
+        element: ET.Element, *tags: str, recursive: bool = False
+    ) -> str | None:
+        for tag in tags:
+            value = text(find(element, tag))
+            if value:
+                return value
+
+        if not recursive:
+            return None
+
+        for tag in tags:
+            for match in find_recursive(element, tag):
+                value = text(match)
+                if value:
+                    return value
+
+        return None

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
@@ -39,6 +39,107 @@ def _read_json(path: Path) -> dict:
 
 def _payload_context_ids(data: dict) -> list[str]:
     return [entry["context"]["context_id"] for entry in data["contexts"]]
+
+
+def _reload_juniper_driver_module():
+    import importlib  # noqa: I001
+    import ufaya.drivers.juniper.driver as mod
+
+    importlib.reload(mod)
+    return mod
+
+
+def _repeat_name_config_xml() -> str:
+    return """\
+<configuration>
+    <security>
+        <zones>
+            <security-zone>
+                <name>trust</name>
+            </security-zone>
+            <security-zone>
+                <name>untrust</name>
+            </security-zone>
+            <security-zone>
+                <name>dmz</name>
+            </security-zone>
+        </zones>
+        <policies>
+            <policy>
+                <from-zone-name>trust</from-zone-name>
+                <to-zone-name>untrust</to-zone-name>
+                <policy>
+                    <name>shared-policy</name>
+                    <match>
+                        <source-address>any</source-address>
+                        <destination-address>any</destination-address>
+                        <application>any</application>
+                    </match>
+                    <then>
+                        <permit/>
+                    </then>
+                </policy>
+            </policy>
+            <policy>
+                <from-zone-name>trust</from-zone-name>
+                <to-zone-name>dmz</to-zone-name>
+                <policy>
+                    <name>shared-policy</name>
+                    <match>
+                        <source-address>any</source-address>
+                        <destination-address>any</destination-address>
+                        <application>any</application>
+                    </match>
+                    <then>
+                        <deny/>
+                    </then>
+                </policy>
+            </policy>
+            <global>
+                <policy>
+                    <name>shared-policy</name>
+                    <match>
+                        <source-address>any</source-address>
+                        <destination-address>any</destination-address>
+                        <application>any</application>
+                    </match>
+                    <then>
+                        <reject/>
+                    </then>
+                </policy>
+            </global>
+        </policies>
+    </security>
+</configuration>
+"""
+
+
+def _repeat_name_hit_count_xml() -> str:
+    return """\
+<rpc-reply>
+    <security-policies-hit-count-information>
+        <policy-information>
+            <from-zone>trust</from-zone>
+            <to-zone>untrust</to-zone>
+            <policy-name>shared-policy</policy-name>
+            <policy-count>11</policy-count>
+        </policy-information>
+        <policy-information>
+            <from-zone>trust</from-zone>
+            <to-zone>dmz</to-zone>
+            <policy-name>shared-policy</policy-name>
+            <policy-count>22</policy-count>
+        </policy-information>
+        <policy-information>
+            <from-zone>junos-global</from-zone>
+            <to-zone>junos-global</to-zone>
+            <policy-name>shared-policy</policy-name>
+            <policy-count>33</policy-count>
+        </policy-information>
+        <number-of-policy>3</number-of-policy>
+    </security-policies-hit-count-information>
+</rpc-reply>
+"""
 
 
 # =====================================================================
@@ -500,8 +601,33 @@ class TestErrorHandling:
 class TestLiveFetch:
     def test_live_fetch_command(self):
         xml = _fixture("juniper_actions.xml").read_text()
+        hit_counts_xml = """\
+<rpc-reply>
+    <security-policies-hit-count-information>
+        <policy-information>
+            <from-zone>trust</from-zone>
+            <to-zone>untrust</to-zone>
+            <policy-name>permit-rule</policy-name>
+            <policy-count>5</policy-count>
+        </policy-information>
+        <policy-information>
+            <from-zone>trust</from-zone>
+            <to-zone>untrust</to-zone>
+            <policy-name>deny-rule</policy-name>
+            <policy-count>6</policy-count>
+        </policy-information>
+        <policy-information>
+            <from-zone>trust</from-zone>
+            <to-zone>untrust</to-zone>
+            <policy-name>reject-rule</policy-name>
+            <policy-count>7</policy-count>
+        </policy-information>
+        <number-of-policy>3</number-of-policy>
+    </security-policies-hit-count-information>
+</rpc-reply>
+"""
         mock_conn = MagicMock()
-        mock_conn.send_command.return_value = xml
+        mock_conn.send_command.side_effect = [xml, hit_counts_xml]
         mock_conn.__enter__ = MagicMock(return_value=mock_conn)
         mock_conn.__exit__ = MagicMock(return_value=False)
 
@@ -511,10 +637,7 @@ class TestLiveFetch:
             "sys.modules",
             {"netmiko": MagicMock(ConnectHandler=mock_handler_cls)},
         ):
-            import importlib  # noqa: I001
-            import ufaya.drivers.juniper.driver as mod
-
-            importlib.reload(mod)
+            mod = _reload_juniper_driver_module()
             d2 = mod.JuniperSRXDriver(
                 host="10.0.0.1", username="admin", password="secret"
             )
@@ -526,10 +649,12 @@ class TestLiveFetch:
             username="admin",
             password="secret",
         )
-        mock_conn.send_command.assert_called_once_with(
-            "show configuration | display xml | no-more"
-        )
+        assert mock_conn.send_command.call_args_list == [
+            call("show configuration | display xml | no-more"),
+            call("show security policies hit-count | display xml | no-more"),
+        ]
         assert len(records) == 3
+        assert [record.rule.hit_count for record in records] == [5, 6, 7]
 
     def test_live_fetch_failure_propagates(self):
         mock_handler_cls = MagicMock(side_effect=Exception("Connection refused"))
@@ -538,10 +663,7 @@ class TestLiveFetch:
             "sys.modules",
             {"netmiko": MagicMock(ConnectHandler=mock_handler_cls)},
         ):
-            import importlib  # noqa: I001
-            import ufaya.drivers.juniper.driver as mod
-
-            importlib.reload(mod)
+            mod = _reload_juniper_driver_module()
             d2 = mod.JuniperSRXDriver(
                 host="10.0.0.1", username="admin", password="secret"
             )
@@ -608,7 +730,8 @@ class TestJSONExport:
 
         assert data["vendor"] == "juniper_srx"
         assert data["device"] == "srx-test"
-        assert data["schema_version"] == 2
+        assert "hit_counts_collected_at" not in data
+        assert data["schema_version"] == 3
         assert data["mode"] == "enriched"
         assert data["rule_count"] == 3
         assert data["evaluation_model"] == {
@@ -638,6 +761,11 @@ class TestJSONExport:
             "deny-rule",
             "reject-rule",
         ]
+        assert [rule["hit_count"] for rule in context["rules"]] == [
+            None,
+            None,
+            None,
+        ]
 
     def test_enriched_mode_includes_traceability_but_not_raw(self, tmp_path):
         d = JuniperSRXDriver(
@@ -647,6 +775,7 @@ class TestJSONExport:
         data = _read_json(d.export_rules_json(tmp_path))
 
         first_rule = data["contexts"][0]["rules"][0]
+        assert first_rule["hit_count"] is None
         assert first_rule["service"] == ["tcp/443"]
         assert first_rule["log_actions"] == ["session-init"]
         assert first_rule["service_refs"] == ["tcp-443"]
@@ -670,6 +799,7 @@ class TestJSONExport:
         data = _read_json(d.export_rules_json(tmp_path, mode="minimal"))
 
         first_rule = data["contexts"][0]["rules"][0]
+        assert first_rule["hit_count"] is None
         assert first_rule["service"] == ["tcp/443"]
         assert first_rule["log_actions"] == ["session-init"]
         assert "service_refs" not in first_rule
@@ -688,6 +818,7 @@ class TestJSONExport:
         data = _read_json(d.export_rules_json(tmp_path, mode="debug"))
 
         first_rule = data["contexts"][0]["rules"][0]
+        assert first_rule["hit_count"] is None
         assert first_rule["raw"]["name"] == "permit-rule"
 
     def test_priority_ordered_contexts(self, tmp_path):
@@ -781,3 +912,104 @@ class TestJSONExport:
 
         assert data2["rule_count"] == data1["rule_count"]
         assert len(list(tmp_path.glob(".*"))) == 0
+
+    def test_live_export_includes_hit_counts_and_timestamp(self, tmp_path):
+        config_xml = _repeat_name_config_xml()
+        hit_counts_xml = _repeat_name_hit_count_xml()
+        mock_conn = MagicMock()
+        mock_conn.send_command.side_effect = [config_xml, hit_counts_xml]
+        mock_conn.__enter__ = MagicMock(return_value=mock_conn)
+        mock_conn.__exit__ = MagicMock(return_value=False)
+        mock_handler_cls = MagicMock(return_value=mock_conn)
+
+        with patch.dict(
+            "sys.modules",
+            {"netmiko": MagicMock(ConnectHandler=mock_handler_cls)},
+        ):
+            mod = _reload_juniper_driver_module()
+            with patch.object(
+                mod.JuniperSRXDriver,
+                "_utc_now",
+                return_value="2026-03-31T12:34:56Z",
+            ):
+                driver = mod.JuniperSRXDriver(
+                    host="10.0.0.1",
+                    username="admin",
+                    password="secret",
+                    device_name="srx-live",
+                )
+                data = _read_json(driver.export_rules_json(tmp_path))
+
+        assert data["hit_counts_collected_at"] == "2026-03-31T12:34:56Z"
+        assert _payload_context_ids(data) == [
+            "inter_zone:trust->untrust",
+            "inter_zone:trust->dmz",
+            "global",
+        ]
+        assert [rule["hit_count"] for rule in data["contexts"][0]["rules"]] == [11]
+        assert [rule["hit_count"] for rule in data["contexts"][1]["rules"]] == [22]
+        assert [rule["hit_count"] for rule in data["contexts"][2]["rules"]] == [33]
+
+    def test_live_export_falls_back_when_hit_count_fetch_fails(self, tmp_path):
+        config_xml = _fixture("juniper_actions.xml").read_text()
+        mock_conn = MagicMock()
+        mock_conn.send_command.side_effect = [
+            config_xml,
+            RuntimeError("hit count RPC unavailable"),
+        ]
+        mock_conn.__enter__ = MagicMock(return_value=mock_conn)
+        mock_conn.__exit__ = MagicMock(return_value=False)
+        mock_handler_cls = MagicMock(return_value=mock_conn)
+
+        with patch.dict(
+            "sys.modules",
+            {"netmiko": MagicMock(ConnectHandler=mock_handler_cls)},
+        ):
+            mod = _reload_juniper_driver_module()
+            driver = mod.JuniperSRXDriver(
+                host="10.0.0.1",
+                username="admin",
+                password="secret",
+                device_name="srx-live",
+            )
+            data = _read_json(driver.export_rules_json(tmp_path))
+
+        assert "hit_counts_collected_at" not in data
+        assert [rule["hit_count"] for rule in data["contexts"][0]["rules"]] == [
+            None,
+            None,
+            None,
+        ]
+
+    def test_live_export_falls_back_when_hit_count_xml_is_unparseable(
+        self, tmp_path
+    ):
+        config_xml = _fixture("juniper_actions.xml").read_text()
+        mock_conn = MagicMock()
+        mock_conn.send_command.side_effect = [
+            config_xml,
+            "<rpc-reply><unexpected/></rpc-reply>",
+        ]
+        mock_conn.__enter__ = MagicMock(return_value=mock_conn)
+        mock_conn.__exit__ = MagicMock(return_value=False)
+        mock_handler_cls = MagicMock(return_value=mock_conn)
+
+        with patch.dict(
+            "sys.modules",
+            {"netmiko": MagicMock(ConnectHandler=mock_handler_cls)},
+        ):
+            mod = _reload_juniper_driver_module()
+            driver = mod.JuniperSRXDriver(
+                host="10.0.0.1",
+                username="admin",
+                password="secret",
+                device_name="srx-live",
+            )
+            data = _read_json(driver.export_rules_json(tmp_path))
+
+        assert "hit_counts_collected_at" not in data
+        assert [rule["hit_count"] for rule in data["contexts"][0]["rules"]] == [
+            None,
+            None,
+            None,
+        ]
