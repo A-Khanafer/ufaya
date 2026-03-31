@@ -1,11 +1,16 @@
 from __future__ import annotations
 
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
 ExportMode = Literal["minimal", "enriched", "debug"]
 VALID_EXPORT_MODES: tuple[ExportMode, ...] = ("minimal", "enriched", "debug")
+_EXPORT_MODE_LOOKUP: dict[str, ExportMode] = {
+    "minimal": "minimal",
+    "enriched": "enriched",
+    "debug": "debug",
+}
 
 
 class ServiceDetail(BaseModel):
@@ -113,9 +118,10 @@ class FirewallRuleRecord(BaseModel):
 
 def normalize_export_mode(mode: str) -> ExportMode:
     """Validate and normalize an export mode string."""
-    if mode not in VALID_EXPORT_MODES:
+    export_mode = _EXPORT_MODE_LOOKUP.get(mode)
+    if export_mode is None:
         supported = ", ".join(VALID_EXPORT_MODES)
         raise ValueError(
             f"Unsupported export mode '{mode}'. Choose from: {supported}"
         )
-    return cast(ExportMode, mode)
+    return export_mode
