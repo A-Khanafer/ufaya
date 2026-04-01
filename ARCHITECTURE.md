@@ -46,7 +46,10 @@ User code
   └─► JuniperSRXDriver(host=... | config_path=...)
         ├─ get_rules()           → list[FirewallRuleRecord]
         │    ├─ _load_rule_data()→ config XML + optional live hit-count snapshot
+        │    │    └─ _fetch_live_data() → operational hit-count command + config fetch
         │    ├─ _parse_xml()     → ElementTree root (config or operational XML)
+        │    ├─ _parse_hit_count_lookup()
+        │    │    └─ accepts multiple operational XML schemas, including multi-routing-engine wrappers
         │    └─ _extract_rules() → walks contexts, resolves addresses/apps, applies hit counts
         │         └─ Resolver    → expands address-books, address-sets, applications
         └─ export_rules_json()   → Path  (atomic schema v3 JSON write, minimal/enriched/debug modes)
@@ -60,4 +63,6 @@ User code
 - **Easy extension**: add a new vendor by subclassing `FirewallDriver` and registering it in `device_factory.py`.
 - **Vendor packages**: complex drivers (e.g., Juniper) are split into sub-packages to keep modules focused and testable.
 
-For Juniper SRX, live-mode exports can enrich the canonical rule model with operational hit-count data. When that snapshot is available, the JSON export also records a top-level `hit_counts_collected_at` UTC timestamp; file-backed exports keep the same per-rule shape with `hit_count: null`.
+For Juniper SRX, live-mode exports enrich the canonical rule model with operational hit-count data fetched from `show security policies hit-count | display xml | no-more`, not from configuration XML. When that snapshot is available, the JSON export also records a top-level `hit_counts_collected_at` UTC timestamp; file-backed exports keep the same per-rule shape with `hit_count: null`.
+
+Because Junos operational XML can vary by release and platform wrapper, the Juniper hit-count parser supports multiple known response shapes. Maintenance notes for future schema changes live in `JUNIPER_HIT_COUNTS.md`.
