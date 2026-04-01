@@ -142,6 +142,45 @@ def _repeat_name_hit_count_xml() -> str:
 """
 
 
+def _repeat_name_multi_re_hit_count_xml() -> str:
+    return """\
+<rpc-reply xmlns:junos="http://xml.juniper.net/junos/23.4R2-S3.9/junos">
+    <multi-routing-engine-results>
+        <multi-routing-engine-item>
+            <re-name>node0</re-name>
+            <policy-hit-count xmlns="http://xml.juniper.net/junos/23.4R0/junos-security-policy">
+                <logical-system-name>root-logical-system</logical-system-name>
+                <policy-hit-count-entry junos:style="brief">
+                    <policy-hit-count-policy-name>shared-policy</policy-hit-count-policy-name>
+                    <policy-hit-count-index>1</policy-hit-count-index>
+                    <policy-hit-count-from-zone>trust</policy-hit-count-from-zone>
+                    <policy-hit-count-to-zone>untrust</policy-hit-count-to-zone>
+                    <policy-hit-count-count>0</policy-hit-count-count>
+                    <policy-hit-count-action>Permit</policy-hit-count-action>
+                </policy-hit-count-entry>
+                <policy-hit-count-entry junos:style="brief">
+                    <policy-hit-count-policy-name>shared-policy</policy-hit-count-policy-name>
+                    <policy-hit-count-index>2</policy-hit-count-index>
+                    <policy-hit-count-from-zone>trust</policy-hit-count-from-zone>
+                    <policy-hit-count-to-zone>dmz</policy-hit-count-to-zone>
+                    <policy-hit-count-count>22</policy-hit-count-count>
+                    <policy-hit-count-action>Deny</policy-hit-count-action>
+                </policy-hit-count-entry>
+                <policy-hit-count-entry junos:style="brief">
+                    <policy-hit-count-policy-name>shared-policy</policy-hit-count-policy-name>
+                    <policy-hit-count-index>3</policy-hit-count-index>
+                    <policy-hit-count-from-zone>junos-global</policy-hit-count-from-zone>
+                    <policy-hit-count-to-zone>junos-global</policy-hit-count-to-zone>
+                    <policy-hit-count-count>33</policy-hit-count-count>
+                    <policy-hit-count-action>Reject</policy-hit-count-action>
+                </policy-hit-count-entry>
+            </policy-hit-count>
+        </multi-routing-engine-item>
+    </multi-routing-engine-results>
+</rpc-reply>
+"""
+
+
 # =====================================================================
 # Constructor validation
 # =====================================================================
@@ -627,7 +666,7 @@ class TestLiveFetch:
 </rpc-reply>
 """
         mock_conn = MagicMock()
-        mock_conn.send_command.side_effect = [xml, hit_counts_xml]
+        mock_conn.send_command.side_effect = [hit_counts_xml, xml]
         mock_conn.__enter__ = MagicMock(return_value=mock_conn)
         mock_conn.__exit__ = MagicMock(return_value=False)
 
@@ -650,8 +689,8 @@ class TestLiveFetch:
             password="secret",
         )
         assert mock_conn.send_command.call_args_list == [
-            call("show configuration | display xml | no-more"),
             call("show security policies hit-count | display xml | no-more"),
+            call("show configuration | display xml | no-more"),
         ]
         assert len(records) == 3
         assert [record.rule.hit_count for record in records] == [5, 6, 7]
@@ -917,7 +956,7 @@ class TestJSONExport:
         config_xml = _repeat_name_config_xml()
         hit_counts_xml = _repeat_name_hit_count_xml()
         mock_conn = MagicMock()
-        mock_conn.send_command.side_effect = [config_xml, hit_counts_xml]
+        mock_conn.send_command.side_effect = [hit_counts_xml, config_xml]
         mock_conn.__enter__ = MagicMock(return_value=mock_conn)
         mock_conn.__exit__ = MagicMock(return_value=False)
         mock_handler_cls = MagicMock(return_value=mock_conn)
@@ -954,8 +993,8 @@ class TestJSONExport:
         config_xml = _fixture("juniper_actions.xml").read_text()
         mock_conn = MagicMock()
         mock_conn.send_command.side_effect = [
-            config_xml,
             RuntimeError("hit count RPC unavailable"),
+            config_xml,
         ]
         mock_conn.__enter__ = MagicMock(return_value=mock_conn)
         mock_conn.__exit__ = MagicMock(return_value=False)
@@ -987,8 +1026,8 @@ class TestJSONExport:
         config_xml = _fixture("juniper_actions.xml").read_text()
         mock_conn = MagicMock()
         mock_conn.send_command.side_effect = [
-            config_xml,
             "<rpc-reply><unexpected/></rpc-reply>",
+            config_xml,
         ]
         mock_conn.__enter__ = MagicMock(return_value=mock_conn)
         mock_conn.__exit__ = MagicMock(return_value=False)
@@ -1013,3 +1052,41 @@ class TestJSONExport:
             None,
             None,
         ]
+
+    def test_live_export_parses_multi_re_hit_count_snapshot_before_config_dump(
+        self, tmp_path
+    ):
+        config_xml = _repeat_name_config_xml()
+        hit_counts_xml = _repeat_name_multi_re_hit_count_xml()
+        mock_conn = MagicMock()
+        mock_conn.send_command.side_effect = [hit_counts_xml, config_xml]
+        mock_conn.__enter__ = MagicMock(return_value=mock_conn)
+        mock_conn.__exit__ = MagicMock(return_value=False)
+        mock_handler_cls = MagicMock(return_value=mock_conn)
+
+        with patch.dict(
+            "sys.modules",
+            {"netmiko": MagicMock(ConnectHandler=mock_handler_cls)},
+        ):
+            mod = _reload_juniper_driver_module()
+            with patch.object(
+                mod.JuniperSRXDriver,
+                "_utc_now",
+                return_value="2026-03-31T12:34:56Z",
+            ):
+                driver = mod.JuniperSRXDriver(
+                    host="10.0.0.1",
+                    username="admin",
+                    password="secret",
+                    device_name="srx-live",
+                )
+                data = _read_json(driver.export_rules_json(tmp_path))
+
+        assert mock_conn.send_command.call_args_list == [
+            call("show security policies hit-count | display xml | no-more"),
+            call("show configuration | display xml | no-more"),
+        ]
+        assert data["hit_counts_collected_at"] == "2026-03-31T12:34:56Z"
+        assert [rule["hit_count"] for rule in data["contexts"][0]["rules"]] == [0]
+        assert [rule["hit_count"] for rule in data["contexts"][1]["rules"]] == [22]
+        assert [rule["hit_count"] for rule in data["contexts"][2]["rules"]] == [33]

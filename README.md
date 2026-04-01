@@ -30,6 +30,7 @@ The design follows the same architectural principle used by tools like NAPALM, w
 - In live mode, UFAYA fetches `show security policies hit-count | display xml | no-more` and populates `hit_count` when that operational snapshot is available.
 - In file mode, or when the live hit-count snapshot cannot be collected, rules still include `hit_count: null`.
 - Live exports that successfully collect hit counts also include a top-level `hit_counts_collected_at` UTC timestamp.
+- Hit-count parser maintenance notes live in [JUNIPER_HIT_COUNTS.md](JUNIPER_HIT_COUNTS.md).
 
 ## Installation
 

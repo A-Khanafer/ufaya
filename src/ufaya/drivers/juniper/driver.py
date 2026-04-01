@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
@@ -62,6 +63,19 @@ _EVALUATION_MODEL = {
 _CONFIG_COMMAND = "show configuration | display xml | no-more"
 _HIT_COUNT_COMMAND = "show security policies hit-count | display xml | no-more"
 _GLOBAL_ZONE_TOKENS = {"global", "junos-global"}
+_HIT_COUNT_HEADER_TOKENS = (
+    "from zone",
+    "to zone",
+    "policy count",
+)
+_HIT_COUNT_ROW_RE = re.compile(
+    r"^\s*(?P<index>\d+)\s+"
+    r"(?P<from_zone>\S+)\s+"
+    r"(?P<to_zone>\S+)\s+"
+    r"(?P<policy_name>.+?)\s+"
+    r"(?P<count>[\d,]+)"
+    r"(?:\s+\S.*)?$"
+)
 
 PolicyHitCountKey = tuple[str, str | None, str | None, str]
 
@@ -264,13 +278,13 @@ class JuniperSRXDriver(FirewallDriver):
                 "password": self._password,
             }
             with ConnectHandler(**device) as conn:
-                config_output: str = conn.send_command(_CONFIG_COMMAND)
                 try:
                     hit_count_output: str | None = conn.send_command(
                         _HIT_COUNT_COMMAND
                     )
                 except Exception:
                     hit_count_output = None
+                config_output: str = conn.send_command(_CONFIG_COMMAND)
         except Exception as exc:
             raise ConnectionError(
                 f"Failed to fetch configuration from {self._host}: {exc}"
@@ -279,6 +293,8 @@ class JuniperSRXDriver(FirewallDriver):
         if not hit_count_output:
             return config_output, {}, None
 
+        hit_count_lookup: dict[PolicyHitCountKey, int]
+        parsed: bool
         try:
             hit_count_root = self._parse_xml(
                 hit_count_output, unwrap_configuration=False
@@ -287,7 +303,14 @@ class JuniperSRXDriver(FirewallDriver):
                 hit_count_root
             )
         except ValueError:
-            return config_output, {}, None
+            hit_count_lookup, parsed = self._parse_hit_count_text(
+                hit_count_output
+            )
+
+        if not parsed:
+            hit_count_lookup, parsed = self._parse_hit_count_text(
+                hit_count_output
+            )
 
         if not parsed:
             return config_output, {}, None
@@ -589,11 +612,13 @@ class JuniperSRXDriver(FirewallDriver):
         candidates = [
             *find_recursive(root, "policy-information"),
             *find_recursive(root, "policy-hit-count-information"),
+            *find_recursive(root, "policy-hit-count-entry"),
         ]
         parsed = bool(
             candidates
             or find_recursive(root, "policy-count")
             or find_recursive(root, "number-of-policy")
+            or find_recursive(root, "policy-hit-count-count")
         )
 
         for candidate in candidates:
@@ -606,17 +631,120 @@ class JuniperSRXDriver(FirewallDriver):
         return lookup, parsed
 
     @classmethod
+    def _parse_hit_count_text(
+        cls, raw_output: str
+    ) -> tuple[dict[PolicyHitCountKey, int], bool]:
+        lookup: dict[PolicyHitCountKey, int] = {}
+        parsed = False
+        in_table = False
+        text_output = cls._extract_cli_output_text(raw_output)
+
+        for line in text_output.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+
+            normalized = " ".join(stripped.lower().split())
+            if cls._is_hit_count_table_header(normalized):
+                parsed = True
+                in_table = True
+                continue
+            if normalized.startswith("number of policy:"):
+                parsed = True
+                in_table = False
+                continue
+            if normalized.startswith("logical system:"):
+                parsed = True
+                continue
+            if normalized.startswith("tenant:"):
+                parsed = True
+                continue
+            if normalized.startswith("node") and stripped.endswith(":"):
+                continue
+            if set(stripped) == {"-"}:
+                continue
+            if not in_table:
+                continue
+
+            entry = cls._parse_hit_count_table_row(stripped)
+            if entry is None:
+                continue
+
+            key, count = entry
+            lookup[key] = count
+
+        return lookup, parsed
+
+    @staticmethod
+    def _extract_cli_output_text(raw_output: str) -> str:
+        try:
+            root = ET.fromstring(raw_output)
+        except ET.ParseError:
+            return raw_output
+
+        outputs: list[str] = []
+        for element in root.iter():
+            tag = element.tag
+            if "}" in tag:
+                tag = tag.split("}", 1)[1]
+            if tag != "output":
+                continue
+
+            block = "".join(element.itertext()).strip()
+            if block:
+                outputs.append(block)
+
+        if outputs:
+            return "\n".join(outputs)
+        return raw_output
+
+    @staticmethod
+    def _is_hit_count_table_header(line: str) -> bool:
+        return all(token in line for token in _HIT_COUNT_HEADER_TOKENS)
+
+    @classmethod
+    def _parse_hit_count_table_row(
+        cls, line: str
+    ) -> tuple[PolicyHitCountKey, int] | None:
+        match = _HIT_COUNT_ROW_RE.match(line)
+        if match is None:
+            return None
+
+        policy_name = match.group("policy_name").strip()
+        count_text = match.group("count")
+        from_zone = match.group("from_zone")
+        to_zone = match.group("to_zone")
+
+        try:
+            count = int(count_text.replace(",", ""))
+        except ValueError:
+            return None
+
+        if cls._is_global_policy(from_zone, to_zone):
+            key: PolicyHitCountKey = ("global", None, None, policy_name)
+        else:
+            scope = "intra_zone" if from_zone == to_zone else "inter_zone"
+            key = (scope, from_zone, to_zone, policy_name)
+
+        return key, count
+
+    @classmethod
     def _extract_hit_count_entry(
         cls, element: ET.Element
     ) -> tuple[PolicyHitCountKey, int] | None:
         policy_name = cls._first_text(
-            element, "policy-name", "name", recursive=True
+            element,
+            "policy-name",
+            "name",
+            "policy-hit-count-policy-name",
+            recursive=True,
         )
         count_text = cls._first_text(
             element,
             "policy-count",
             "hit-count",
             "count",
+            "policy-hit-count-count",
             recursive=True,
         )
         if policy_name is None or count_text is None:
@@ -628,10 +756,18 @@ class JuniperSRXDriver(FirewallDriver):
             return None
 
         from_zone = cls._first_text(
-            element, "from-zone-name", "from-zone", recursive=True
+            element,
+            "from-zone-name",
+            "from-zone",
+            "policy-hit-count-from-zone",
+            recursive=True,
         )
         to_zone = cls._first_text(
-            element, "to-zone-name", "to-zone", recursive=True
+            element,
+            "to-zone-name",
+            "to-zone",
+            "policy-hit-count-to-zone",
+            recursive=True,
         )
         if cls._is_global_policy(from_zone, to_zone):
             key: PolicyHitCountKey = ("global", None, None, policy_name)
