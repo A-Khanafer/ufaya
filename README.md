@@ -28,6 +28,7 @@ The design follows the same architectural principle used by tools like NAPALM, w
 - Export payloads now use `schema_version: 3`.
 - Each exported rule includes a canonical `hit_count` field.
 - In live mode, UFAYA fetches `show security policies hit-count | display xml | no-more` and populates `hit_count` when that operational snapshot is available.
+- The live hit-count parser supports both older `policy-information` responses and newer Junos operational XML variants such as `multi-routing-engine-results` with `policy-hit-count-entry` records.
 - In file mode, or when the live hit-count snapshot cannot be collected, rules still include `hit_count: null`.
 - Live exports that successfully collect hit counts also include a top-level `hit_counts_collected_at` UTC timestamp.
 - Hit-count parser maintenance notes live in [JUNIPER_HIT_COUNTS.md](JUNIPER_HIT_COUNTS.md).

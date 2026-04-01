@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1]
+
+### Fixed
+
+- Juniper SRX live hit-count parsing now recognizes newer operational XML variants such as `multi-routing-engine-results` and `policy-hit-count-entry`, in addition to the older `policy-information` shape.
+- Juniper SRX live exports now preserve valid zero hit counts like `0` instead of falling back to `null` when the operational XML was successfully parsed.
+- Juniper SRX hit-count collection documentation now points to a dedicated maintenance note for future Junos XML schema changes.
+
 ## [0.5.0]
 
 ### Added
@@ -90,7 +98,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `get_firewall_driver()` factory for vendor-based driver selection.
 - PEP 561 typing marker, test suite, and CI/dev tooling configuration.
 
-[Unreleased]: https://github.com/A-Khanafer/ufaya/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/A-Khanafer/ufaya/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/A-Khanafer/ufaya/compare/v0.5.0...v0.5.1
+[0.5.0]: https://github.com/A-Khanafer/ufaya/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/A-Khanafer/ufaya/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/A-Khanafer/ufaya/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/A-Khanafer/ufaya/compare/v0.2.0...v0.2.1
