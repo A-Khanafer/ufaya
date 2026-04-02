@@ -80,6 +80,47 @@ class TestNatExtraction:
         assert snat_off.rule.enabled is False
         assert snat_off.rule.match.destination == ["172.16.0.0/24"]
 
+    def test_get_nat_rules_defaults_unconstrained_matches_and_resolves_apps(
+        self,
+    ):
+        driver = JuniperSRXDriver(
+            config_path=_fixture("juniper_nat_resolved.xml"),
+            device_name="srx-nat",
+        )
+
+        records = driver.get_nat_rules()
+        rule_map = {record.rule.name: record for record in records}
+
+        assert rule_map["snat-any"].rule.match.model_dump(exclude_none=True) == {
+            "source": ["any"],
+            "destination": ["any"],
+        }
+        assert rule_map["snat-source-only"].rule.match.model_dump(
+            exclude_none=True
+        ) == {
+            "source": ["10.0.0.0/24"],
+            "destination": ["any"],
+        }
+        assert rule_map["snat-app"].rule.match.model_dump(
+            exclude_none=True
+        ) == {
+            "source": ["10.0.0.0/24"],
+            "destination": ["any"],
+            "destination_ports": ["8080"],
+            "protocols": ["tcp"],
+            "applications": ["tcp-8080"],
+        }
+        assert rule_map["snat-mixed"].rule.match.model_dump(
+            exclude_none=True
+        ) == {
+            "source": ["any"],
+            "destination": ["172.16.0.0/24"],
+            "source_ports": ["1024-65535"],
+            "destination_ports": ["53", "111"],
+            "protocols": ["udp", "tcp"],
+            "applications": ["rpc-app"],
+        }
+
 
 class TestNatJSONExport:
     def test_export_creates_directory(self, tmp_path):
@@ -182,6 +223,7 @@ class TestNatJSONExport:
 
         dnat_rule = data["contexts"][1]["rules"][0]
         assert dnat_rule["match"] == {
+            "source": ["any"],
             "destination": ["203.0.113.10/32"],
             "destination_ports": ["443"],
             "protocols": ["tcp"],
@@ -224,6 +266,74 @@ class TestNatJSONExport:
                 "nat_type": "source",
                 "addresses": ["198.51.100.10/32"],
                 "description": "SNAT pool for internet egress",
+            },
+        ]
+
+    def test_export_resolves_application_matches_and_pool_ranges(
+        self, tmp_path
+    ):
+        driver = JuniperSRXDriver(
+            config_path=_fixture("juniper_nat_resolved.xml"),
+            device_name="srx-test",
+        )
+
+        data = _read_json(driver.export_nat_json(tmp_path))
+        source_rules = data["contexts"][1]["rules"]
+        source_rule_map = {rule["name"]: rule for rule in source_rules}
+
+        assert source_rule_map["snat-any"]["match"] == {
+            "source": ["any"],
+            "destination": ["any"],
+        }
+        assert source_rule_map["snat-source-only"]["match"] == {
+            "source": ["10.0.0.0/24"],
+            "destination": ["any"],
+        }
+        assert source_rule_map["snat-app"]["match"] == {
+            "source": ["10.0.0.0/24"],
+            "destination": ["any"],
+            "destination_ports": ["8080"],
+            "protocols": ["tcp"],
+            "applications": ["tcp-8080"],
+        }
+        assert source_rule_map["snat-mixed"]["match"] == {
+            "source": ["any"],
+            "destination": ["172.16.0.0/24"],
+            "source_ports": ["1024-65535"],
+            "destination_ports": ["53", "111"],
+            "protocols": ["udp", "tcp"],
+            "applications": ["rpc-app"],
+        }
+
+        dnat_rule = data["contexts"][0]["rules"][0]
+        assert dnat_rule["match"] == {
+            "source": ["any"],
+            "destination": ["203.0.113.10/32"],
+            "destination_ports": ["8443"],
+            "protocols": ["tcp"],
+            "applications": ["tcp-8443"],
+        }
+        assert dnat_rule["translation"] == {
+            "destination": {
+                "mode": "pool",
+                "addresses": ["10.10.10.10/32-10.10.10.12/32"],
+                "ports": ["8443"],
+            },
+            "bidirectional": False,
+        }
+        assert data["supporting_objects"]["translation_pools"] == [
+            {
+                "name": "web-dnat-range",
+                "nat_type": "destination",
+                "addresses": ["10.10.10.10/32-10.10.10.12/32"],
+                "ports": ["8443"],
+                "description": "DNAT address range",
+            },
+            {
+                "name": "range-snat",
+                "nat_type": "source",
+                "addresses": ["198.51.100.20/32-198.51.100.30/32"],
+                "description": "SNAT address range",
             },
         ]
 

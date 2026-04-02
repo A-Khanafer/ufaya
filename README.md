@@ -42,7 +42,11 @@ The design follows the same architectural principle used by tools like NAPALM, w
 - NAT export modes are also `minimal`, `enriched`, and `debug`.
 - NAT payloads use `schema_version: 1`.
 - Exported NAT rules use a vendor-agnostic, rule-centric shape with canonical `match` and `translation` blocks.
+- Unconstrained NAT address selectors export explicitly as `["any"]` in the canonical `match`.
+- NAT `application` references are resolved into canonical protocol/port match fields while preserving raw application names.
 - Enriched and debug NAT exports also include referenced translation pools under `supporting_objects.translation_pools`.
+- `supporting_objects.translation_pools` remains scoped to pools actually referenced by exported rules, not the full device inventory.
+- Referenced translation pools export the same normalized address/port values used by rule-level translation targets, including supported address-range forms.
 - NAT lookup metadata records Juniper precedence as `static`, then `destination`, then `source`.
 
 ## Installation

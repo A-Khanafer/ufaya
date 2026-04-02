@@ -58,7 +58,8 @@ User code
         │    ├─ _load_config_xml() → config XML only
         │    ├─ _parse_xml()       → ElementTree root
         │    └─ _extract_nat()     → walks security/nat/source|destination|static
-        │         └─ Resolver      → expands address-book names used by NAT matches/translations
+        │         ├─ Resolver      → expands address-book and application references used by NAT matches/translations
+        │         └─ pool inventory → normalizes referenced translation pools for rule output + supporting objects
         └─ export_nat_json()     → Path  (atomic schema v1 JSON write, minimal/enriched/debug modes)
 ```
 
@@ -74,4 +75,12 @@ For Juniper SRX, live-mode exports enrich the canonical rule model with operatio
 
 Because Junos operational XML can vary by release and platform wrapper, the Juniper hit-count parser supports multiple known response shapes. Maintenance notes for future schema changes live in `JUNIPER_HIT_COUNTS.md`.
 
-For Juniper SRX NAT export, both live mode and file mode use configuration XML as the only source of truth. `export_nat_json()` fetches or reads the full configuration XML, parses `<security><nat>`, and emits vendor-agnostic, rule-centric NAT JSON grouped by rule-set context. Enriched and debug NAT exports also include referenced translation pools under `supporting_objects.translation_pools`.
+For Juniper SRX NAT export, both live mode and file mode use configuration XML as the only source of truth. `export_nat_json()` fetches or reads the full configuration XML, parses `<security><nat>`, and emits vendor-agnostic, rule-centric NAT JSON grouped by rule-set context.
+
+The canonical NAT `match` payload is intentionally filter-friendly:
+
+- unconstrained source or destination selectors export explicitly as `["any"]`
+- Junos `application` references are resolved into canonical protocol/source-port/destination-port fields while preserving raw application names
+- explicit `<protocol>`, `<source-port>`, and `<destination-port>` selectors are merged with application-derived semantics deterministically
+
+Enriched and debug NAT exports also include referenced translation pools under `supporting_objects.translation_pools`. Those supporting objects stay scoped to pools actually used by exported rules and reuse the same normalized address/port values as the rule-level translation targets, including supported address-range forms.
