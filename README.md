@@ -15,12 +15,12 @@ The design follows the same architectural principle used by tools like NAPALM, w
 
 | Vendor | Driver | Status |
 |---|---|---|
-| Juniper SRX | `juniper_srx` | Read-only ingestion + context-grouped JSON export with live policy hit counts |
+| Juniper SRX | `juniper_srx` | Read-only XML ingestion + firewall-rule JSON export with live policy hit counts + XML-first NAT JSON export |
 | Palo Alto | `paloalto` | Skeleton |
 | Fortinet | `fortinet` | Skeleton |
 | Cisco | `cisco` | Skeleton |
 
-## Juniper SRX JSON export
+## Juniper SRX exports
 
 `JuniperSRXDriver.export_rules_json(output_dir, mode=...)` writes a context-grouped JSON document for parsed security policies.
 
@@ -32,6 +32,18 @@ The design follows the same architectural principle used by tools like NAPALM, w
 - In file mode, or when the live hit-count snapshot cannot be collected, rules still include `hit_count: null`.
 - Live exports that successfully collect hit counts also include a top-level `hit_counts_collected_at` UTC timestamp.
 - Hit-count parser maintenance notes live in [JUNIPER_HIT_COUNTS.md](JUNIPER_HIT_COUNTS.md).
+
+`JuniperSRXDriver.export_nat_json(output_dir, mode=...)` writes a context-grouped JSON document for parsed Junos NAT rules.
+
+- NAT export is XML-first in both modes:
+  - live mode fetches `show configuration | display xml | no-more`
+  - file mode reads the XML file passed via `config_path`
+- NAT parsing walks `<security><nat><source>`, `<destination>`, and `<static>` from configuration XML.
+- NAT export modes are also `minimal`, `enriched`, and `debug`.
+- NAT payloads use `schema_version: 1`.
+- Exported NAT rules use a vendor-agnostic, rule-centric shape with canonical `match` and `translation` blocks.
+- Enriched and debug NAT exports also include referenced translation pools under `supporting_objects.translation_pools`.
+- NAT lookup metadata records Juniper precedence as `static`, then `destination`, then `source`.
 
 ## Installation
 

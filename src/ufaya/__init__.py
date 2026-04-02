@@ -10,6 +10,16 @@ from ufaya.models.firewall_rule import (
     RuleContext,
     ServiceDetail,
 )
+from ufaya.models.nat_rule import (
+    NatMatch,
+    NatRule,
+    NatRuleContext,
+    NatRuleDebug,
+    NatRuleRecord,
+    NatRuleTrace,
+    NatTranslation,
+    NatTranslationTarget,
+)
 from ufaya.services.device_factory import get_firewall_driver
 
 __all__ = [
@@ -19,6 +29,14 @@ __all__ = [
     "FirewallRuleTrace",
     "RuleContext",
     "ServiceDetail",
+    "NatMatch",
+    "NatRule",
+    "NatRuleContext",
+    "NatRuleDebug",
+    "NatRuleRecord",
+    "NatRuleTrace",
+    "NatTranslation",
+    "NatTranslationTarget",
     "FirewallDriver",
     "get_firewall_driver",
     "__version__",

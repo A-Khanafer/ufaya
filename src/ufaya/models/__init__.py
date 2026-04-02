@@ -8,6 +8,16 @@ from .firewall_rule import (
     RuleContext,
     ServiceDetail,
 )
+from .nat_rule import (
+    NatMatch,
+    NatRule,
+    NatRuleContext,
+    NatRuleDebug,
+    NatRuleRecord,
+    NatRuleTrace,
+    NatTranslation,
+    NatTranslationTarget,
+)
 
 __all__ = [
     "FirewallRule",
@@ -16,4 +26,12 @@ __all__ = [
     "FirewallRuleTrace",
     "RuleContext",
     "ServiceDetail",
+    "NatMatch",
+    "NatRule",
+    "NatRuleContext",
+    "NatRuleDebug",
+    "NatRuleRecord",
+    "NatRuleTrace",
+    "NatTranslation",
+    "NatTranslationTarget",
 ]

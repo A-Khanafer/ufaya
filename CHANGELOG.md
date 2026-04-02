@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0]
+
+### Added
+
+- Canonical NAT models for vendor-agnostic `match`, `translation`, context, trace, debug, and record export.
+- `JuniperSRXDriver.get_nat_rules()` for parsed Junos NAT rule extraction from configuration XML.
+- `JuniperSRXDriver.export_nat_json()` for deterministic, context-grouped NAT JSON export with `minimal`, `enriched`, and `debug` modes.
+- Juniper NAT fixture and test coverage for source, destination, and static NAT parsing and export.
+
+### Changed
+
+- Juniper SRX documentation now describes both firewall-rule export and XML-first NAT export.
+- Juniper SRX NAT export uses full configuration XML in both live mode and file mode, parsing `<security><nat>` rather than CLI `set` lines.
+- Enriched and debug NAT exports now include referenced translation pools under `supporting_objects.translation_pools`.
+
 ## [0.5.1]
 
 ### Fixed
