@@ -41,6 +41,7 @@ from ufaya.models.firewall_rule import (
     FirewallRuleRecord,
     FirewallRuleTrace,
     RuleContext,
+    ServiceDetail,
     normalize_export_mode,
 )
 from ufaya.models.nat_rule import (
@@ -773,9 +774,7 @@ class JuniperSRXDriver(FirewallDriver):
                 if name is None:
                     continue
 
-                addresses = cls._collect_texts(
-                    pool, "address", "host-address-base"
-                )
+                addresses = cls._collect_nat_pool_addresses(pool)
                 ports = cls._collect_texts(pool, "port", "mapped-port")
                 entry: dict[str, Any] = {
                     "name": name,
@@ -891,31 +890,55 @@ class JuniperSRXDriver(FirewallDriver):
         source_zones: list[str],
         destination_zones: list[str],
     ) -> tuple[NatMatch, list[str], list[str]]:
-        if match is None:
-            return NatMatch(), [], []
+        source_refs: list[str] = []
+        destination_refs: list[str] = []
+        explicit_protocols: list[str] = []
+        applications: list[str] = []
+        explicit_source_ports: list[str] = []
+        explicit_destination_ports: list[str] = []
 
-        source_refs = cls._collect_texts(
-            match, "source-address", "source-address-name"
+        if match is not None:
+            source_refs = cls._collect_texts(
+                match, "source-address", "source-address-name"
+            )
+            destination_refs = cls._collect_texts(
+                match, "destination-address", "destination-address-name"
+            )
+            explicit_protocols = cls._collect_texts(match, "protocol")
+            applications = cls._collect_texts(match, "application")
+            explicit_source_ports = cls._collect_texts(match, "source-port")
+            explicit_destination_ports = cls._collect_texts(
+                match, "destination-port"
+            )
+
+        (
+            application_protocols,
+            application_source_ports,
+            application_destination_ports,
+        ) = cls._resolve_nat_application_match(
+            resolver, applications
         )
-        destination_refs = cls._collect_texts(
-            match, "destination-address", "destination-address-name"
+        protocols = cls._dedupe(
+            [*explicit_protocols, *application_protocols]
         )
-        protocols = cls._collect_texts(match, "protocol")
-        applications = cls._collect_texts(match, "application")
-        source_ports = cls._collect_texts(match, "source-port")
-        destination_ports = cls._collect_texts(match, "destination-port")
+        source_ports = cls._dedupe(
+            [*explicit_source_ports, *application_source_ports]
+        )
+        destination_ports = cls._dedupe(
+            [*explicit_destination_ports, *application_destination_ports]
+        )
 
         return (
             NatMatch(
                 source=(
                     resolver.resolve_addresses(source_refs, source_zones)
                     if source_refs
-                    else None
+                    else ["any"]
                 ),
                 destination=(
                     resolver.resolve_addresses(destination_refs, destination_zones)
                     if destination_refs
-                    else None
+                    else ["any"]
                 ),
                 source_ports=source_ports or None,
                 destination_ports=destination_ports or None,
@@ -925,6 +948,49 @@ class JuniperSRXDriver(FirewallDriver):
             source_refs,
             destination_refs,
         )
+
+    @classmethod
+    def _resolve_nat_application_match(
+        cls,
+        resolver: Resolver,
+        application_refs: list[str],
+    ) -> tuple[list[str], list[str], list[str]]:
+        if not application_refs:
+            return [], [], []
+
+        _, service_details = resolver.resolve_applications(application_refs)
+        protocols: list[str] = []
+        source_ports: list[str] = []
+        destination_ports: list[str] = []
+
+        for detail in service_details:
+            cls._merge_service_detail_into_nat_match(
+                detail,
+                protocols=protocols,
+                source_ports=source_ports,
+                destination_ports=destination_ports,
+            )
+
+        return (
+            cls._dedupe(protocols),
+            cls._dedupe(source_ports),
+            cls._dedupe(destination_ports),
+        )
+
+    @staticmethod
+    def _merge_service_detail_into_nat_match(
+        detail: ServiceDetail,
+        *,
+        protocols: list[str],
+        source_ports: list[str],
+        destination_ports: list[str],
+    ) -> None:
+        if detail.protocol is not None:
+            protocols.append(detail.protocol)
+        if detail.source_ports:
+            source_ports.extend(detail.source_ports)
+        if detail.destination_ports:
+            destination_ports.extend(detail.destination_ports)
 
     def _build_nat_translation(
         self,
@@ -1151,6 +1217,72 @@ class JuniperSRXDriver(FirewallDriver):
             "interfaces": interfaces or None,
             "routing_instances": routing_instances or None,
         }
+
+    @classmethod
+    def _collect_nat_pool_addresses(cls, pool: ET.Element) -> list[str]:
+        addresses = cls._collect_texts(pool, "address")
+
+        host_address_base = cls._first_text(
+            pool, "host-address-base", recursive=False
+        )
+        host_address_limit = cls._first_text(
+            pool,
+            "host-address-limit",
+            "address-to",
+            recursive=False,
+        )
+        if host_address_base:
+            if host_address_limit:
+                addresses.append(
+                    cls._format_nat_pool_range(
+                        host_address_base, host_address_limit
+                    )
+                )
+            else:
+                addresses.append(host_address_base)
+
+        for range_element in (
+            *findall(pool, "address"),
+            *findall(pool, "address-range"),
+            *findall(pool, "host-address-range"),
+        ):
+            range_value = cls._extract_nat_pool_range(range_element)
+            if range_value is None:
+                continue
+            addresses.append(range_value)
+
+        return cls._dedupe(addresses)
+
+    @classmethod
+    def _extract_nat_pool_range(
+        cls, element: ET.Element
+    ) -> str | None:
+        lower = cls._first_text(
+            element,
+            "low",
+            "range-low",
+            "start-address",
+            "low-address",
+            "host-address-base",
+            recursive=False,
+        )
+        upper = cls._first_text(
+            element,
+            "high",
+            "range-high",
+            "end-address",
+            "high-address",
+            "host-address-limit",
+            "address-to",
+            recursive=False,
+        )
+        if lower is None or upper is None:
+            return None
+        return cls._format_nat_pool_range(lower, upper)
+
+    @staticmethod
+    def _format_nat_pool_range(lower: str, upper: str) -> str:
+        return f"{lower}-{upper}"
 
     @classmethod
     def _collect_texts(cls, element: ET.Element, *tags: str) -> list[str]:
