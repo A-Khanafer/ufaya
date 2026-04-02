@@ -22,7 +22,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from ufaya.drivers.juniper.resolver import Resolver, normalize_action
 from ufaya.drivers.juniper.xml_helpers import (
@@ -44,8 +44,10 @@ from ufaya.models.firewall_rule import (
     normalize_export_mode,
 )
 from ufaya.models.nat_rule import (
+    NatAction,
     NatMatch,
     NatRule,
+    NatType,
     NatRuleContext,
     NatRuleDebug,
     NatRuleRecord,
@@ -380,7 +382,7 @@ class JuniperSRXDriver(FirewallDriver):
                 "password": self._password,
             }
             with ConnectHandler(**device) as conn:
-                return conn.send_command(_CONFIG_COMMAND)
+                return cast(str, conn.send_command(_CONFIG_COMMAND))
         except Exception as exc:
             raise ConnectionError(
                 f"Failed to fetch configuration from {self._host}: {exc}"
@@ -390,7 +392,7 @@ class JuniperSRXDriver(FirewallDriver):
         self,
     ) -> tuple[str, dict[PolicyHitCountKey, int], str | None]:
         try:
-            from netmiko import ConnectHandler  # type: ignore[import-untyped]
+            from netmiko import ConnectHandler
         except ImportError as exc:
             raise ImportError(
                 "netmiko is required for live mode. "
@@ -794,7 +796,7 @@ class JuniperSRXDriver(FirewallDriver):
     def _build_nat_context(
         cls,
         *,
-        nat_type: str,
+        nat_type: NatType,
         rule_set: ET.Element,
         context_order: int,
     ) -> NatRuleContext:
@@ -934,7 +936,7 @@ class JuniperSRXDriver(FirewallDriver):
         source_zones: list[str],
         destination_zones: list[str],
     ) -> tuple[
-        str,
+        NatAction,
         NatTranslation | None,
         str | None,
         str | None,
