@@ -47,13 +47,13 @@ from ufaya.models.nat_rule import (
     NatAction,
     NatMatch,
     NatRule,
-    NatType,
     NatRuleContext,
     NatRuleDebug,
     NatRuleRecord,
     NatRuleTrace,
     NatTranslation,
     NatTranslationTarget,
+    NatType,
 )
 
 _CONTEXT_PRIORITY = {
