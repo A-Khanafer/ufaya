@@ -3,14 +3,14 @@
 import pytest
 
 from ufaya.models.nat_rule import (
-    NatMatch,
+    NatConditions,
+    NatMapping,
+    NatMappingSide,
+    NatRewrite,
     NatRule,
     NatRuleContext,
     NatRuleDebug,
     NatRuleRecord,
-    NatRuleTrace,
-    NatTranslation,
-    NatTranslationTarget,
 )
 
 
@@ -20,15 +20,28 @@ def make_rule(**overrides):
         device="srx-01",
         nat_type="source",
         name="snat-pool",
-        match=NatMatch(
+        conditions=NatConditions(
             source=["10.0.0.0/24"],
             destination=["any"],
+            source_refs=["client-net"],
+            destination_refs=["any"],
         ),
-        translation=NatTranslation(
-            source=NatTranslationTarget(
-                mode="pool",
-                addresses=["198.51.100.10/32"],
-            )
+        mapping=NatMapping(
+            forward=NatRewrite(
+                summary="source 10.0.0.0/24 -> 198.51.100.10/32",
+                original=NatMappingSide(
+                    field="source",
+                    addresses=["10.0.0.0/24"],
+                ),
+                translated=NatMappingSide(
+                    field="source",
+                    addresses=["198.51.100.10/32"],
+                    ref="internet-snat",
+                ),
+                mapping_kind="pool",
+                determinism="exact",
+                resolution_status="resolved",
+            ),
         ),
         action="translate",
     )
@@ -55,11 +68,6 @@ def make_record(**overrides):
     defaults = dict(
         rule=make_rule(sequence=3, vendor_rule_id="snat-pool"),
         context=make_context(),
-        trace=NatRuleTrace(
-            source_refs=["client-net"],
-            destination_refs=["any"],
-            translation_source_ref="internet-snat",
-        ),
         debug=NatRuleDebug(raw={"name": "snat-pool"}),
     )
     defaults.update(overrides)
@@ -105,33 +113,53 @@ def test_nat_record_minimal_export_is_canonical_only():
     assert data == {
         "nat_type": "source",
         "name": "snat-pool",
-        "match": {
+        "conditions": {
             "source": ["10.0.0.0/24"],
             "destination": ["any"],
         },
         "action": "translate",
         "enabled": True,
-        "translation": {
-            "source": {
-                "mode": "pool",
-                "addresses": ["198.51.100.10/32"],
+        "mapping": {
+            "forward": {
+                "summary": "source 10.0.0.0/24 -> 198.51.100.10/32",
+                "original": {
+                    "field": "source",
+                    "addresses": ["10.0.0.0/24"],
+                },
+                "translated": {
+                    "field": "source",
+                    "addresses": ["198.51.100.10/32"],
+                    "ref": "internet-snat",
+                },
+                "mapping_kind": "pool",
+                "determinism": "exact",
+                "resolution_status": "resolved",
             },
-            "bidirectional": False,
         },
         "vendor_rule_id": "snat-pool",
         "sequence": 3,
     }
 
 
-def test_nat_record_enriched_export_includes_traceability():
+def test_nat_record_minimal_export_strips_condition_refs():
+    record = make_record()
+    data = record.export_rule("minimal")
+
+    conditions = data["conditions"]
+    assert "source_refs" not in conditions
+    assert "destination_refs" not in conditions
+
+
+def test_nat_record_enriched_export_includes_condition_refs():
     record = make_record()
     data = record.export_rule("enriched", include_context=True)
 
     assert data["vendor"] == "juniper_srx"
     assert data["device"] == "srx-01"
     assert data["context"]["context_id"] == "source:trust-to-untrust"
-    assert data["source_refs"] == ["client-net"]
-    assert data["translation_source_ref"] == "internet-snat"
+    assert data["conditions"]["source_refs"] == ["client-net"]
+    assert data["conditions"]["destination_refs"] == ["any"]
+    assert data["mapping"]["forward"]["translated"]["ref"] == "internet-snat"
     assert "raw" not in data
 
 
@@ -140,7 +168,8 @@ def test_nat_record_debug_export_includes_raw_debug_payload():
     data = record.export_rule("debug")
 
     assert data["raw"] == {"name": "snat-pool"}
-    assert data["translation_source_ref"] == "internet-snat"
+    assert data["conditions"]["source_refs"] == ["client-net"]
+    assert data["mapping"]["forward"]["translated"]["ref"] == "internet-snat"
 
 
 def test_nat_record_export_omits_none_values():
@@ -149,11 +178,23 @@ def test_nat_record_export_omits_none_values():
             vendor_rule_id=None,
             sequence=None,
             description=None,
-            translation=NatTranslation(
-                source=NatTranslationTarget(mode="interface_address")
+            mapping=NatMapping(
+                forward=NatRewrite(
+                    summary="source 10.0.0.0/24 -> interface_address",
+                    original=NatMappingSide(
+                        field="source",
+                        addresses=["10.0.0.0/24"],
+                    ),
+                    translated=NatMappingSide(
+                        field="source",
+                        address_source="interface_address",
+                    ),
+                    mapping_kind="interface_address",
+                    determinism="dynamic",
+                    resolution_status="resolved",
+                ),
             ),
         ),
-        trace=NatRuleTrace(),
         debug=None,
     )
     data = record.export_rule("minimal")
@@ -161,10 +202,8 @@ def test_nat_record_export_omits_none_values():
     assert "vendor_rule_id" not in data
     assert "sequence" not in data
     assert "description" not in data
-    assert data["translation"] == {
-        "source": {"mode": "interface_address"},
-        "bidirectional": False,
-    }
+    assert data["mapping"]["forward"]["mapping_kind"] == "interface_address"
+    assert data["mapping"]["forward"]["determinism"] == "dynamic"
 
 
 def test_invalid_nat_export_mode_raises():
