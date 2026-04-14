@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2]
+
+### Changed
+
+- NAT export schema redesigned to v2 with explicit `conditions` (traffic match) and `mapping` (before/after rewrite) blocks, replacing the previous `match` and `translation` fields.
+- Each NAT mapping step now includes `summary`, `original`/`translated` sides with `field`, `addresses`, `ports`, and `ref`, plus `mapping_kind`, `determinism`, and `resolution_status` for self-describing LLM-consumable output.
+- Static NAT rules now export both `forward` and `reverse` mapping directions instead of a single `bidirectional` flag on the translation.
+- Traceability refs (`source_refs`, `destination_refs`) moved from `NatRuleTrace` into `conditions`; translation refs moved into `mapping.*.translated.ref`.
+- `NatRuleTrace` removed; all provenance data is now inline in the canonical payload.
+
+### Added
+
+- `NatMapping`, `NatRewrite`, and `NatMappingSide` models for explicit before/after NAT rewrite semantics.
+- `determinism` field on each mapping step: `exact` (1:1), `set_based` (pool/range), or `dynamic` (interface NAT).
+- `resolution_status` field: `resolved` or `unresolved`, ensuring static NAT with unresolvable prefix-names still export with the raw ref instead of silently dropping the target.
+- Juniper NAT fixture and test coverage for source pool mapping, interface NAT, destination port rewrite, static NAT forward/reverse, unresolved prefix-names, unconstrained conditions, no-translate rules, summary text, and schema v2 assertions.
+
+### Fixed
+
+- Static NAT no longer serializes as `match: {}` with a bare `fixed` mode and no target address.
+- Unresolved static NAT prefix-names now export with `resolution_status: "unresolved"` and the raw ref, instead of silently dropping the target.
+- Juniper NAT match parsing now handles nested XML element variants (`static-nat-rule-match`, `destination-address-name/dst-addr-name`, `prefix-name/addr-prefix-name`) produced by real Junos `show configuration | display xml` output.
+- Static NAT prefix-name values that are literal CIDRs (e.g. `10.28.8.2/32`) are now used directly as translated addresses instead of being sent through the address-book resolver.
+
+### Removed
+
+- NAT schema v1 compatibility. Consumers must update to schema v2.
+- `NatMatch`, `NatTranslation`, `NatTranslationTarget`, and `NatRuleTrace` models.
+
 ## [0.6.1]
 
 ### Changed

@@ -12,7 +12,7 @@ src/ufaya/
 │   └── base.py          # FirewallDriver ABC — the single interface all drivers implement
 ├── models/
 │   ├── firewall_rule.py # Canonical firewall-rule, context, trace, hit-count, and record Pydantic models
-│   └── nat_rule.py      # Canonical NAT rule, context, trace, translation, and record Pydantic models
+│   └── nat_rule.py      # Canonical NAT rule, conditions, mapping, rewrite, and record Pydantic models
 ├── drivers/
 │   ├── paloalto.py      # Palo Alto Networks driver (skeleton)
 │   ├── fortinet.py      # Fortinet FortiGate driver (skeleton)
@@ -58,9 +58,9 @@ User code
         │    ├─ _load_config_xml() → config XML only
         │    ├─ _parse_xml()       → ElementTree root
         │    └─ _extract_nat()     → walks security/nat/source|destination|static
-        │         ├─ Resolver      → expands address-book and application references used by NAT matches/translations
+        │         ├─ Resolver      → expands address-book and application references used by NAT conditions/mappings
         │         └─ pool inventory → normalizes referenced translation pools for rule output + supporting objects
-        └─ export_nat_json()     → Path  (atomic schema v1 JSON write, minimal/enriched/debug modes)
+        └─ export_nat_json()     → Path  (atomic schema v2 JSON write, minimal/enriched/debug modes)
 ```
 
 ## Design principles
@@ -75,12 +75,17 @@ For Juniper SRX, live-mode exports enrich the canonical rule model with operatio
 
 Because Junos operational XML can vary by release and platform wrapper, the Juniper hit-count parser supports multiple known response shapes. Maintenance notes for future schema changes live in `JUNIPER_HIT_COUNTS.md`.
 
-For Juniper SRX NAT export, both live mode and file mode use configuration XML as the only source of truth. `export_nat_json()` fetches or reads the full configuration XML, parses `<security><nat>`, and emits vendor-agnostic, rule-centric NAT JSON grouped by rule-set context.
+For Juniper SRX NAT export, both live mode and file mode use configuration XML as the only source of truth. `export_nat_json()` fetches or reads the full configuration XML, parses `<security><nat>`, and emits vendor-agnostic, rule-centric NAT JSON (schema v2) grouped by rule-set context.
 
-The canonical NAT `match` payload is intentionally filter-friendly:
+The canonical NAT payload distinguishes **conditions** (traffic match) from **mapping** (address/port rewrite):
 
-- unconstrained source or destination selectors export explicitly as `["any"]`
-- Junos `application` references are resolved into canonical protocol/source-port/destination-port fields while preserving raw application names
-- explicit `<protocol>`, `<source-port>`, and `<destination-port>` selectors are merged with application-derived semantics deterministically
+- **`conditions`**: traffic selectors that determine which packets a NAT rule applies to. Unconstrained source or destination selectors export explicitly as `["any"]`. Junos `application` references are resolved into canonical protocol/source-port/destination-port fields while preserving raw application names. Explicit `<protocol>`, `<source-port>`, and `<destination-port>` selectors are merged with application-derived semantics deterministically. `source_refs` and `destination_refs` inline the raw config-object references used for resolution.
 
-Enriched and debug NAT exports also include referenced translation pools under `supporting_objects.translation_pools`. Those supporting objects stay scoped to pools actually used by exported rules and reuse the same normalized address/port values as the rule-level translation targets, including supported address-range forms.
+- **`mapping`**: explicit before/after rewrite. Contains a required `forward` step and an optional `reverse` step (static NAT only). Each step (`NatRewrite`) includes:
+  - `summary`: human-readable rewrite string, e.g. `"destination 203.0.113.10/32:443 -> 10.10.10.10/32:8443"`
+  - `original` / `translated`: `NatMappingSide` with `field` (source/destination), `addresses`, `ports`, `ref` (raw pool/prefix reference), `address_source` (for interface NAT)
+  - `mapping_kind`: `fixed` (static), `pool` (pool-based), or `interface_address`
+  - `determinism`: `exact` (1:1 mapping), `set_based` (pool/range), or `dynamic` (interface)
+  - `resolution_status`: `resolved` or `unresolved` — unresolved entries still export the raw ref so downstream consumers can identify the gap
+
+Enriched and debug NAT exports also include referenced translation pools under `supporting_objects.translation_pools`. Those supporting objects stay scoped to pools actually used by exported rules and reuse the same normalized address/port values as the rule-level mapping targets, including supported address-range forms.

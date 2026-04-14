@@ -40,13 +40,16 @@ The design follows the same architectural principle used by tools like NAPALM, w
   - file mode reads the XML file passed via `config_path`
 - NAT parsing walks `<security><nat><source>`, `<destination>`, and `<static>` from configuration XML.
 - NAT export modes are also `minimal`, `enriched`, and `debug`.
-- NAT payloads use `schema_version: 1`.
-- Exported NAT rules use a vendor-agnostic, rule-centric shape with canonical `match` and `translation` blocks.
-- Unconstrained NAT address selectors export explicitly as `["any"]` in the canonical `match`.
-- NAT `application` references are resolved into canonical protocol/port match fields while preserving raw application names.
+- NAT payloads use `schema_version: 2`.
+- Exported NAT rules use a vendor-agnostic, rule-centric shape with explicit `conditions` (traffic match) and `mapping` (before/after rewrite) blocks.
+- `conditions` describes which packets the rule selects; `mapping` describes what field is rewritten, from which addresses/ports, to which addresses/ports.
+- Each mapping step includes a human-readable `summary`, `original`/`translated` sides, `mapping_kind` (`fixed`/`pool`/`interface_address`), `determinism` (`exact`/`set_based`/`dynamic`), and `resolution_status` (`resolved`/`unresolved`).
+- Static NAT exports both `forward` (inbound destination rewrite) and `reverse` (outbound source rewrite) mapping steps.
+- Unconstrained NAT address selectors export explicitly as `["any"]` in `conditions`.
+- NAT `application` references are resolved into canonical protocol/port condition fields while preserving raw application names.
 - Enriched and debug NAT exports also include referenced translation pools under `supporting_objects.translation_pools`.
 - `supporting_objects.translation_pools` remains scoped to pools actually referenced by exported rules, not the full device inventory.
-- Referenced translation pools export the same normalized address/port values used by rule-level translation targets, including supported address-range forms.
+- Referenced translation pools export the same normalized address/port values used by rule-level mapping targets, including supported address-range forms.
 - NAT lookup metadata records Juniper precedence as `static`, then `destination`, then `source`.
 
 ## Installation
