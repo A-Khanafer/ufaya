@@ -45,16 +45,18 @@ from ufaya.models.firewall_rule import (
     normalize_export_mode,
 )
 from ufaya.models.nat_rule import (
+    Determinism,
     NatAction,
-    NatMatch,
+    NatConditions,
+    NatMapping,
+    NatMappingSide,
+    NatRewrite,
     NatRule,
     NatRuleContext,
     NatRuleDebug,
     NatRuleRecord,
-    NatRuleTrace,
-    NatTranslation,
-    NatTranslationTarget,
     NatType,
+    ResolutionStatus,
 )
 
 _CONTEXT_PRIORITY = {
@@ -85,7 +87,7 @@ _NAT_EVALUATION_MODEL = {
     "rule_order_within_context": "top_down_first_match",
 }
 
-_NAT_SCHEMA_VERSION = 1
+_NAT_SCHEMA_VERSION = 2
 
 _CONFIG_COMMAND = "show configuration | display xml | no-more"
 _HIT_COUNT_COMMAND = "show security policies hit-count | display xml | no-more"
@@ -837,22 +839,21 @@ class JuniperSRXDriver(FirewallDriver):
         destination_zones = context.to_zones or context.from_zones or []
         resolution_zones = self._dedupe([*source_zones, *destination_zones])
 
-        match, source_refs, destination_refs = self._build_nat_match(
-            find(rule, "match"),
+        match_el = find(rule, "match")
+        if match_el is None:
+            match_el = find(rule, "static-nat-rule-match")
+        conditions = self._build_nat_conditions(
+            match_el,
             resolver,
             source_zones=resolution_zones,
             destination_zones=resolution_zones,
         )
-        (
-            action,
-            translation,
-            translation_source_ref,
-            translation_destination_ref,
-        ) = self._build_nat_translation(
+        action, mapping = self._build_nat_mapping(
             rule,
             resolver,
             context,
             pool_inventory,
+            conditions=conditions,
             source_zones=source_zones,
             destination_zones=destination_zones,
         )
@@ -864,32 +865,26 @@ class JuniperSRXDriver(FirewallDriver):
                 nat_type=context.nat_type,
                 vendor_rule_id=name,
                 name=name,
-                match=match,
-                translation=translation,
+                conditions=conditions,
+                mapping=mapping,
                 action=action,
                 enabled=enabled,
                 sequence=sequence,
                 description=description,
             ),
             context=context,
-            trace=NatRuleTrace(
-                source_refs=source_refs or None,
-                destination_refs=destination_refs or None,
-                translation_source_ref=translation_source_ref,
-                translation_destination_ref=translation_destination_ref,
-            ),
             debug=NatRuleDebug(raw=elem_to_dict(rule)),
         )
 
     @classmethod
-    def _build_nat_match(
+    def _build_nat_conditions(
         cls,
         match: ET.Element | None,
         resolver: Resolver,
         *,
         source_zones: list[str],
         destination_zones: list[str],
-    ) -> tuple[NatMatch, list[str], list[str]]:
+    ) -> NatConditions:
         source_refs: list[str] = []
         destination_refs: list[str] = []
         explicit_protocols: list[str] = []
@@ -928,25 +923,23 @@ class JuniperSRXDriver(FirewallDriver):
             [*explicit_destination_ports, *application_destination_ports]
         )
 
-        return (
-            NatMatch(
-                source=(
-                    resolver.resolve_addresses(source_refs, source_zones)
-                    if source_refs
-                    else ["any"]
-                ),
-                destination=(
-                    resolver.resolve_addresses(destination_refs, destination_zones)
-                    if destination_refs
-                    else ["any"]
-                ),
-                source_ports=source_ports or None,
-                destination_ports=destination_ports or None,
-                protocols=protocols or None,
-                applications=applications or None,
+        return NatConditions(
+            source=(
+                resolver.resolve_addresses(source_refs, source_zones)
+                if source_refs
+                else ["any"]
             ),
-            source_refs,
-            destination_refs,
+            destination=(
+                resolver.resolve_addresses(destination_refs, destination_zones)
+                if destination_refs
+                else ["any"]
+            ),
+            source_ports=source_ports or None,
+            destination_ports=destination_ports or None,
+            protocols=protocols or None,
+            applications=applications or None,
+            source_refs=source_refs or None,
+            destination_refs=destination_refs or None,
         )
 
     @classmethod
@@ -992,128 +985,274 @@ class JuniperSRXDriver(FirewallDriver):
         if detail.destination_ports:
             destination_ports.extend(detail.destination_ports)
 
-    def _build_nat_translation(
+    @staticmethod
+    def _build_rewrite_summary(
+        original: NatMappingSide,
+        translated: NatMappingSide,
+        resolution_status: str,
+    ) -> str:
+        field = translated.field
+
+        def _addr_str(side: NatMappingSide) -> str:
+            if side.addresses:
+                return ",".join(side.addresses)
+            if side.address_source:
+                return side.address_source
+            if side.ref:
+                return side.ref
+            return "any"
+
+        def _with_ports(addr: str, ports: list[str] | None) -> str:
+            if ports:
+                return f"{addr}:{','.join(ports)}"
+            return addr
+
+        orig_str = _with_ports(_addr_str(original), original.ports)
+        trans_str = _with_ports(_addr_str(translated), translated.ports)
+        result = f"{field} {orig_str} -> {trans_str}"
+        if resolution_status == "unresolved":
+            result += " [unresolved]"
+        return result
+
+    @staticmethod
+    def _derive_determinism(
+        mapping_kind: str,
+        addresses: list[str] | None,
+    ) -> Determinism:
+        if mapping_kind == "interface_address":
+            return "dynamic"
+        if addresses:
+            if len(addresses) > 1:
+                return "set_based"
+            for addr in addresses:
+                if "/" in addr and "-" in addr:
+                    return "set_based"
+        return "exact"
+
+    def _build_nat_mapping(
         self,
         rule: ET.Element,
         resolver: Resolver,
         context: NatRuleContext,
         pool_inventory: dict[tuple[str, str], dict[str, Any]],
         *,
+        conditions: NatConditions,
         source_zones: list[str],
         destination_zones: list[str],
-    ) -> tuple[
-        NatAction,
-        NatTranslation | None,
-        str | None,
-        str | None,
-    ]:
+    ) -> tuple[NatAction, NatMapping | None]:
         then = find(rule, "then")
         if then is None:
-            return "no_translate", None, None, None
+            return "no_translate", None
 
         if context.nat_type == "source":
-            source_nat = find(then, "source-nat")
-            if source_nat is None:
-                return "no_translate", None, None, None
-            if find(source_nat, "off") is not None:
-                return "no_translate", None, None, None
-
-            pool_name = self._clean_text(find(source_nat, "pool"))
-            if pool_name is not None:
-                return (
-                    "translate",
-                    NatTranslation(
-                        source=self._pool_target(
-                            pool_inventory, "source", pool_name
-                        )
-                    ),
-                    pool_name,
-                    None,
-                )
-
-            if find(source_nat, "interface") is not None:
-                return (
-                    "translate",
-                    NatTranslation(
-                        source=NatTranslationTarget(
-                            mode="interface_address"
-                        )
-                    ),
-                    None,
-                    None,
-                )
-
-            return "translate", None, None, None
-
+            return self._build_source_nat_mapping(
+                then, conditions, pool_inventory
+            )
         if context.nat_type == "destination":
-            destination_nat = find(then, "destination-nat")
-            if destination_nat is None:
-                return "no_translate", None, None, None
-            if find(destination_nat, "off") is not None:
-                return "no_translate", None, None, None
+            return self._build_destination_nat_mapping(
+                then, conditions, pool_inventory
+            )
+        return self._build_static_nat_mapping(
+            then, resolver, conditions, source_zones, destination_zones
+        )
 
-            pool_name = self._clean_text(find(destination_nat, "pool"))
-            if pool_name is not None:
-                return (
-                    "translate",
-                    NatTranslation(
-                        destination=self._pool_target(
-                            pool_inventory, "destination", pool_name
-                        )
-                    ),
-                    None,
-                    pool_name,
-                )
+    def _build_source_nat_mapping(
+        self,
+        then: ET.Element,
+        conditions: NatConditions,
+        pool_inventory: dict[tuple[str, str], dict[str, Any]],
+    ) -> tuple[NatAction, NatMapping | None]:
+        source_nat = find(then, "source-nat")
+        if source_nat is None:
+            return "no_translate", None
+        if find(source_nat, "off") is not None:
+            return "no_translate", None
 
-            return "translate", None, None, None
+        pool_name = self._clean_text(find(source_nat, "pool"))
+        if pool_name is not None:
+            pool = pool_inventory.get(("source", pool_name), {})
+            pool_addresses = pool.get("addresses")
+            pool_ports = pool.get("ports")
+            original = NatMappingSide(
+                field="source",
+                addresses=conditions.source if conditions.source != ["any"] else None,
+            )
+            translated = NatMappingSide(
+                field="source",
+                addresses=pool_addresses,
+                ports=pool_ports,
+                ref=pool_name,
+            )
+            determinism = self._derive_determinism("pool", pool_addresses)
+            forward = NatRewrite(
+                summary=self._build_rewrite_summary(original, translated, "resolved"),
+                original=original,
+                translated=translated,
+                mapping_kind="pool",
+                determinism=determinism,
+                resolution_status="resolved",
+            )
+            return "translate", NatMapping(forward=forward)
 
+        if find(source_nat, "interface") is not None:
+            original = NatMappingSide(
+                field="source",
+                addresses=conditions.source if conditions.source != ["any"] else None,
+            )
+            translated = NatMappingSide(
+                field="source",
+                address_source="interface_address",
+            )
+            forward = NatRewrite(
+                summary=self._build_rewrite_summary(original, translated, "resolved"),
+                original=original,
+                translated=translated,
+                mapping_kind="interface_address",
+                determinism="dynamic",
+                resolution_status="resolved",
+            )
+            return "translate", NatMapping(forward=forward)
+
+        return "translate", None
+
+    def _build_destination_nat_mapping(
+        self,
+        then: ET.Element,
+        conditions: NatConditions,
+        pool_inventory: dict[tuple[str, str], dict[str, Any]],
+    ) -> tuple[NatAction, NatMapping | None]:
+        destination_nat = find(then, "destination-nat")
+        if destination_nat is None:
+            return "no_translate", None
+        if find(destination_nat, "off") is not None:
+            return "no_translate", None
+
+        pool_name = self._clean_text(find(destination_nat, "pool"))
+        if pool_name is not None:
+            pool = pool_inventory.get(("destination", pool_name), {})
+            pool_addresses = pool.get("addresses")
+            pool_ports = pool.get("ports")
+            original = NatMappingSide(
+                field="destination",
+                addresses=(
+                    conditions.destination
+                    if conditions.destination != ["any"]
+                    else None
+                ),
+                ports=conditions.destination_ports,
+            )
+            translated = NatMappingSide(
+                field="destination",
+                addresses=pool_addresses,
+                ports=pool_ports,
+                ref=pool_name,
+            )
+            determinism = self._derive_determinism("pool", pool_addresses)
+            forward = NatRewrite(
+                summary=self._build_rewrite_summary(original, translated, "resolved"),
+                original=original,
+                translated=translated,
+                mapping_kind="pool",
+                determinism=determinism,
+                resolution_status="resolved",
+            )
+            return "translate", NatMapping(forward=forward)
+
+        return "translate", None
+
+    def _build_static_nat_mapping(
+        self,
+        then: ET.Element,
+        resolver: Resolver,
+        conditions: NatConditions,
+        source_zones: list[str],
+        destination_zones: list[str],
+    ) -> tuple[NatAction, NatMapping | None]:
         static_nat = find(then, "static-nat")
         if static_nat is None:
-            return "no_translate", None, None, None
+            return "no_translate", None
 
-        prefix_name = self._clean_text(find(static_nat, "prefix-name"))
+        prefix_name_el = find(static_nat, "prefix-name")
+        prefix_name = self._clean_text(prefix_name_el)
+        if prefix_name is None and prefix_name_el is not None:
+            prefix_name = self._first_child_text(prefix_name_el)
         prefix_value = self._clean_text(find(static_nat, "prefix"))
         translation_ref: str | None = None
         translated_addresses: list[str] | None = None
+        resolution_status: ResolutionStatus = "resolved"
         translation_zones = self._dedupe(
             [*source_zones, *destination_zones]
         )
 
         if prefix_name is not None:
-            translation_ref = prefix_name
-            translated_addresses = resolver.resolve_addresses(
-                [prefix_name], translation_zones
-            )
+            if "/" in prefix_name:
+                translated_addresses = [prefix_name]
+            else:
+                translation_ref = prefix_name
+                resolved = resolver.resolve_addresses(
+                    [prefix_name], translation_zones
+                )
+                if resolved and resolved != [prefix_name]:
+                    translated_addresses = resolved
+                else:
+                    resolution_status = "unresolved"
         elif prefix_value is not None:
             translated_addresses = [prefix_value]
 
         mapped_ports = self._collect_texts(static_nat, "mapped-port")
-        return (
-            "translate",
-            NatTranslation(
-                destination=NatTranslationTarget(
-                    mode="fixed",
-                    addresses=translated_addresses or None,
-                    ports=mapped_ports or None,
-                ),
-                bidirectional=True,
+
+        # Forward: inbound destination rewrite
+        fwd_original = NatMappingSide(
+            field="destination",
+            addresses=(
+                conditions.destination
+                if conditions.destination != ["any"]
+                else None
             ),
-            None,
-            translation_ref,
+        )
+        fwd_translated = NatMappingSide(
+            field="destination",
+            addresses=translated_addresses,
+            ports=mapped_ports or None,
+            ref=translation_ref,
+        )
+        forward = NatRewrite(
+            summary=self._build_rewrite_summary(
+                fwd_original, fwd_translated, resolution_status
+            ),
+            original=fwd_original,
+            translated=fwd_translated,
+            mapping_kind="fixed",
+            determinism="exact",
+            resolution_status=resolution_status,
         )
 
-    @staticmethod
-    def _pool_target(
-        pool_inventory: dict[tuple[str, str], dict[str, Any]],
-        nat_type: str,
-        pool_name: str,
-    ) -> NatTranslationTarget:
-        pool = pool_inventory.get((nat_type, pool_name), {})
-        return NatTranslationTarget(
-            mode="pool",
-            addresses=pool.get("addresses"),
-            ports=pool.get("ports"),
+        # Reverse: outbound source rewrite
+        rev_original = NatMappingSide(
+            field="source",
+            addresses=translated_addresses,
+            ref=translation_ref if translated_addresses is None else None,
         )
+        rev_translated = NatMappingSide(
+            field="source",
+            addresses=(
+                conditions.destination
+                if conditions.destination != ["any"]
+                else None
+            ),
+        )
+        reverse = NatRewrite(
+            summary=self._build_rewrite_summary(
+                rev_original, rev_translated, resolution_status
+            ),
+            original=rev_original,
+            translated=rev_translated,
+            mapping_kind="fixed",
+            determinism="exact",
+            resolution_status=resolution_status,
+        )
+
+        return "translate", NatMapping(forward=forward, reverse=reverse)
 
     @staticmethod
     def _serialize_nat_contexts(
@@ -1155,24 +1294,23 @@ class JuniperSRXDriver(FirewallDriver):
         seen: set[tuple[str, str]] = set()
 
         for record in rules:
-            trace = record.trace
-            if trace is None:
+            mapping = record.rule.mapping
+            if mapping is None:
                 continue
 
-            for key in (
-                ("source", trace.translation_source_ref),
-                ("destination", trace.translation_destination_ref),
-            ):
-                nat_type, pool_name = key
-                if pool_name is None:
-                    continue
-                inventory_key = (nat_type, pool_name)
-                if inventory_key not in pool_inventory:
-                    continue
-                if inventory_key in seen:
-                    continue
-                seen.add(inventory_key)
-                ordered_keys.append(inventory_key)
+            fwd = mapping.forward
+            if fwd.mapping_kind == "pool" and fwd.translated.ref:
+                inventory_key = (fwd.original.field, fwd.translated.ref)
+                if inventory_key in pool_inventory and inventory_key not in seen:
+                    seen.add(inventory_key)
+                    ordered_keys.append(inventory_key)
+            if mapping.reverse is not None:
+                rev = mapping.reverse
+                if rev.mapping_kind == "pool" and rev.translated.ref:
+                    inventory_key = (rev.original.field, rev.translated.ref)
+                    if inventory_key in pool_inventory and inventory_key not in seen:
+                        seen.add(inventory_key)
+                        ordered_keys.append(inventory_key)
 
         payloads: list[dict[str, Any]] = []
         for key in ordered_keys:
@@ -1290,10 +1428,21 @@ class JuniperSRXDriver(FirewallDriver):
         for tag in tags:
             for child in findall(element, tag):
                 value = cls._clean_text(child)
+                if value is None:
+                    value = cls._first_child_text(child)
                 if value is None or value in values:
                     continue
                 values.append(value)
         return values
+
+    @classmethod
+    def _first_child_text(cls, element: ET.Element) -> str | None:
+        """Return text from the first child element that has text content."""
+        for child in element:
+            value = cls._clean_text(child)
+            if value is not None:
+                return value
+        return None
 
     @staticmethod
     def _clean_text(element: ET.Element | None) -> str | None:
