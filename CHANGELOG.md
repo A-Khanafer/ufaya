@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.3]
+
+### Fixed
+
+- Source NAT `conditions.source` and destination NAT `conditions.destination` no longer default to `["any"]` when parsing real Junos `show configuration | display xml` output. Real device XML uses type-specific match tags (`<src-nat-rule-match>`, `<dest-nat-rule-match>`) rather than the generic `<match>` tag; the parser now tries the type-specific tag first and falls back to `<match>` for backward compatibility.
+
+### Added
+
+- `_NAT_MATCH_TAGS` lookup mapping each NAT type to its real Junos match element tag name (`src-nat-rule-match`, `dest-nat-rule-match`, `static-nat-rule-match`).
+- Test fixture `juniper_nat_real_tags.xml` covering real Junos XML tag names with `<name>`-wrapped address values.
+- Seven new tests in `TestNatRealXmlTags` verifying source, destination, and static NAT condition parsing against real XML tag formats.
+
 ## [0.6.2]
 
 ### Changed
