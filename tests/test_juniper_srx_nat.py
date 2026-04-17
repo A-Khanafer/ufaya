@@ -554,3 +554,111 @@ class TestNatJSONExport:
         assert data["nat_rule_count"] == 0
         assert data["contexts"] == []
         assert data["supporting_objects"] == {"translation_pools": []}
+
+
+class TestNatRealXmlTags:
+    """Verify parsing when XML uses real Junos NAT match tag names.
+
+    Real ``show configuration | display xml`` output uses
+    ``<src-nat-rule-match>``, ``<dest-nat-rule-match>``, and
+    ``<static-nat-rule-match>`` instead of the generic ``<match>``.
+    """
+
+    def test_source_nat_conditions_parsed_with_real_tags(self):
+        driver = JuniperSRXDriver(
+            config_path=_fixture("juniper_nat_real_tags.xml"),
+            device_name="srx-real",
+        )
+
+        records = driver.get_nat_rules()
+        snat_pool = [r for r in records if r.rule.name == "snat-pool"][0]
+
+        assert snat_pool.rule.conditions.source == ["10.0.0.0/24"]
+        assert snat_pool.rule.conditions.source_refs == ["client-net"]
+        assert snat_pool.rule.conditions.destination == ["any"]
+        assert snat_pool.rule.conditions.destination_refs == ["any"]
+
+    def test_source_nat_interface_conditions_with_real_tags(self):
+        driver = JuniperSRXDriver(
+            config_path=_fixture("juniper_nat_real_tags.xml"),
+            device_name="srx-real",
+        )
+
+        records = driver.get_nat_rules()
+        snat_iface = [r for r in records if r.rule.name == "snat-interface"][0]
+
+        assert snat_iface.rule.conditions.source == ["10.1.0.0/24"]
+        assert snat_iface.rule.conditions.source_refs == ["guest-net"]
+        assert snat_iface.rule.conditions.protocols == ["tcp"]
+
+    def test_source_nat_any_still_defaults_with_real_tags(self):
+        driver = JuniperSRXDriver(
+            config_path=_fixture("juniper_nat_real_tags.xml"),
+            device_name="srx-real",
+        )
+
+        records = driver.get_nat_rules()
+        snat_any = [r for r in records if r.rule.name == "snat-any"][0]
+
+        assert snat_any.rule.conditions.source == ["any"]
+        assert snat_any.rule.conditions.destination == ["any"]
+
+    def test_source_nat_off_conditions_with_real_tags(self):
+        driver = JuniperSRXDriver(
+            config_path=_fixture("juniper_nat_real_tags.xml"),
+            device_name="srx-real",
+        )
+
+        records = driver.get_nat_rules()
+        snat_off = [r for r in records if r.rule.name == "snat-off"][0]
+
+        assert snat_off.rule.action == "no_translate"
+        assert snat_off.rule.conditions.destination == ["172.16.0.0/24"]
+        assert snat_off.rule.conditions.destination_refs == ["partner-net"]
+
+    def test_destination_nat_conditions_parsed_with_real_tags(self):
+        driver = JuniperSRXDriver(
+            config_path=_fixture("juniper_nat_real_tags.xml"),
+            device_name="srx-real",
+        )
+
+        records = driver.get_nat_rules()
+        dnat = [r for r in records if r.rule.name == "dnat-web"][0]
+
+        assert dnat.rule.conditions.destination == ["203.0.113.10/32"]
+        assert dnat.rule.conditions.destination_refs == ["203.0.113.10/32"]
+        assert dnat.rule.conditions.destination_ports == ["443"]
+        assert dnat.rule.conditions.protocols == ["tcp"]
+
+    def test_static_nat_conditions_parsed_with_real_tags(self):
+        driver = JuniperSRXDriver(
+            config_path=_fixture("juniper_nat_real_tags.xml"),
+            device_name="srx-real",
+        )
+
+        records = driver.get_nat_rules()
+        static_web = [r for r in records if r.rule.name == "static-web"][0]
+
+        assert static_web.rule.conditions.destination == ["198.51.100.200/32"]
+        assert static_web.rule.conditions.destination_refs == [
+            "198.51.100.200/32"
+        ]
+        assert static_web.rule.mapping.forward.translated.addresses == [
+            "10.10.10.10/32"
+        ]
+
+    def test_source_nat_pool_mapping_with_real_tags(self):
+        driver = JuniperSRXDriver(
+            config_path=_fixture("juniper_nat_real_tags.xml"),
+            device_name="srx-real",
+        )
+
+        records = driver.get_nat_rules()
+        snat_pool = [r for r in records if r.rule.name == "snat-pool"][0]
+        fwd = snat_pool.rule.mapping.forward
+
+        assert fwd.original.field == "source"
+        assert fwd.original.addresses == ["10.0.0.0/24"]
+        assert fwd.translated.addresses == ["198.51.100.10/32"]
+        assert fwd.translated.ref == "internet-snat"
+        assert fwd.mapping_kind == "pool"

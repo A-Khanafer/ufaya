@@ -89,6 +89,12 @@ _NAT_EVALUATION_MODEL = {
 
 _NAT_SCHEMA_VERSION = 2
 
+_NAT_MATCH_TAGS: dict[str, str] = {
+    "source": "src-nat-rule-match",
+    "destination": "dest-nat-rule-match",
+    "static": "static-nat-rule-match",
+}
+
 _CONFIG_COMMAND = "show configuration | display xml | no-more"
 _HIT_COUNT_COMMAND = "show security policies hit-count | display xml | no-more"
 _GLOBAL_ZONE_TOKENS = {"global", "junos-global"}
@@ -839,9 +845,9 @@ class JuniperSRXDriver(FirewallDriver):
         destination_zones = context.to_zones or context.from_zones or []
         resolution_zones = self._dedupe([*source_zones, *destination_zones])
 
-        match_el = find(rule, "match")
+        match_el = find(rule, _NAT_MATCH_TAGS.get(context.nat_type, ""))
         if match_el is None:
-            match_el = find(rule, "static-nat-rule-match")
+            match_el = find(rule, "match")
         conditions = self._build_nat_conditions(
             match_el,
             resolver,
