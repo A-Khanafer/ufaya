@@ -1,16 +1,5 @@
-"""Firewall abstractions."""
+"""Firewall capability interfaces."""
 
-from typing import Any
+from ufaya.firewall.base import FirewallReader, FirewallWriter, NatReader
 
-from ufaya.models.firewall_rule import FirewallRuleRecord
-
-from ..services.device_factory import get_firewall_driver
-from .base import FirewallDriver
-
-
-def get_rules(vendor: str, **kwargs: Any) -> list[FirewallRuleRecord]:
-    driver = get_firewall_driver(vendor, **kwargs)
-    return driver.get_rules()
-
-
-__all__ = ["FirewallDriver", "get_rules"]
+__all__ = ["FirewallReader", "FirewallWriter", "NatReader"]
