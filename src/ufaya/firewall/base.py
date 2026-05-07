@@ -25,7 +25,10 @@ from types import TracebackType
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from typing import Self
+    # `Self` lives in `typing` from 3.11+; we still support 3.10, so use the
+    # backport. typing_extensions is a transitive dep of pydantic, so it's
+    # always available without an extra direct dependency.
+    from typing_extensions import Self
 
 from ufaya.models.firewall_rule import FirewallRule, FirewallRuleRecord
 from ufaya.models.nat_rule import NatRuleRecord
