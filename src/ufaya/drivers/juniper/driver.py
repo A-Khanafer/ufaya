@@ -15,11 +15,10 @@ top-down rule order within each context) and :meth:`export_rules_json`
 
 from __future__ import annotations
 
-import json
-import os
 import re
-import tempfile
 import xml.etree.ElementTree as ET
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
@@ -34,7 +33,13 @@ from ufaya.drivers.juniper.xml_helpers import (
     sanitize_device_name,
     text,
 )
-from ufaya.firewall.base import FirewallDriver
+from ufaya.export import (
+    build_nat_payload,
+    build_rules_payload,
+    normalize_export_mode,
+    write_json_atomic,
+)
+from ufaya.firewall.base import FirewallReader, NatReader
 from ufaya.models.firewall_rule import (
     FirewallRule,
     FirewallRuleDebug,
@@ -42,7 +47,6 @@ from ufaya.models.firewall_rule import (
     FirewallRuleTrace,
     RuleContext,
     ServiceDetail,
-    normalize_export_mode,
 )
 from ufaya.models.nat_rule import (
     Determinism,
@@ -115,7 +119,7 @@ _HIT_COUNT_ROW_RE = re.compile(
 PolicyHitCountKey = tuple[str, str | None, str | None, str]
 
 
-class JuniperSRXDriver(FirewallDriver):
+class JuniperSRXDriver(FirewallReader, NatReader):
     """Driver for Juniper SRX security-policy ingestion.
 
     Supports two source modes (exactly one must be provided):
@@ -174,8 +178,73 @@ class JuniperSRXDriver(FirewallDriver):
 
         self._device_name = device_name or (host if host else "juniper_srx")
         self._last_hit_counts_collected_at: str | None = None
+        self._conn: Any = None
 
-    # -- FirewallDriver ABC ------------------------------------------------
+    # -- Connection lifecycle ----------------------------------------------
+
+    def open(self) -> None:
+        """Open an SSH session to the device. No-op in file mode or if already open.
+
+        Use as a context manager (``with driver: ...``) to reuse a single
+        session across multiple calls. Calling ``get_rules()`` /
+        ``get_nat_rules()`` outside a ``with`` block auto-opens and
+        auto-closes a session for that single call.
+        """
+        if self._mode != "live" or self._conn is not None:
+            return
+
+        try:
+            from netmiko import ConnectHandler  # type: ignore[import-untyped]
+        except ImportError as exc:
+            raise ImportError(
+                "netmiko is required for live mode. "
+                "Install it with: pip install netmiko"
+            ) from exc
+
+        try:
+            device = {
+                "device_type": "juniper_junos",
+                "host": self._host,
+                "username": self._username,
+                "password": self._password,
+            }
+            conn = ConnectHandler(**device)
+            self._conn = conn.__enter__()
+        except Exception as exc:
+            self._conn = None
+            raise ConnectionError(
+                f"Failed to fetch configuration from {self._host}: {exc}"
+            ) from exc
+
+    def close(self) -> None:
+        """Close the SSH session if one is open. Safe to call repeatedly."""
+        if self._conn is None:
+            return
+        conn = self._conn
+        self._conn = None
+        try:
+            conn.__exit__(None, None, None)
+        except Exception:
+            pass
+
+    @contextmanager
+    def _session(self) -> Iterator[Any]:
+        """Yield an active SSH session, auto-opening/closing if needed.
+
+        If the caller has already entered the driver as a context manager,
+        the existing session is reused and not closed on exit. Otherwise a
+        fresh session is opened just for this call.
+        """
+        if self._conn is not None:
+            yield self._conn
+            return
+        self.open()
+        try:
+            yield self._conn
+        finally:
+            self.close()
+
+    # -- FirewallReader / NatReader ----------------------------------------
 
     def get_rules(self) -> list[FirewallRuleRecord]:
         """Return all security-policy rules with evaluation context."""
@@ -207,24 +276,6 @@ class JuniperSRXDriver(FirewallDriver):
             ),
         )
 
-    def create_rule(self, rule: FirewallRule) -> None:
-        raise NotImplementedError(
-            "JuniperSRXDriver is read-only in v1. "
-            "create_rule() is not supported."
-        )
-
-    def delete_rule(self, rule_id: str) -> None:
-        raise NotImplementedError(
-            "JuniperSRXDriver is read-only in v1. "
-            "delete_rule() is not supported."
-        )
-
-    def commit(self) -> None:
-        raise NotImplementedError(
-            "JuniperSRXDriver is read-only in v1. "
-            "commit() is not supported."
-        )
-
     # -- JSON export (Juniper-specific) ------------------------------------
 
     def export_rules_json(
@@ -254,61 +305,33 @@ class JuniperSRXDriver(FirewallDriver):
             On write failures.
         """
         export_mode = normalize_export_mode(mode)
-        out = Path(output_dir)
-        if out.exists() and not out.is_dir():
-            raise ValueError(
-                f"export_rules_json: '{out}' exists and is not a directory."
-            )
-        out.mkdir(parents=True, exist_ok=True)
+        out = self._prepare_output_dir(output_dir, "export_rules_json")
 
         rules = self.get_rules()
-        payload: dict[str, Any] = {
-            "vendor": "juniper_srx",
-            "device": self._device_name,
-        }
+        extra: dict[str, Any] = {}
         if self._last_hit_counts_collected_at is not None:
-            payload["hit_counts_collected_at"] = self._last_hit_counts_collected_at
-        payload.update(
-            {
-                "schema_version": 3,
-                "mode": export_mode,
-                "rule_count": len(rules),
-                "evaluation_model": _EVALUATION_MODEL,
-                "contexts": self._serialize_contexts(rules, export_mode),
-            }
+            extra["hit_counts_collected_at"] = self._last_hit_counts_collected_at
+
+        payload = build_rules_payload(
+            rules,
+            vendor="juniper_srx",
+            device=self._device_name,
+            mode=export_mode,
+            schema_version=3,
+            evaluation_model=_EVALUATION_MODEL,
+            extra=extra or None,
         )
 
         safe_name = sanitize_device_name(self._device_name)
         target = out / f"{safe_name}.firewall_rules.json"
-
-        fd, tmp_path = tempfile.mkstemp(
-            dir=str(out), prefix=f".{safe_name}_", suffix=".tmp"
-        )
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as fp:
-                json.dump(payload, fp, indent=2, ensure_ascii=False)
-                fp.write("\n")
-            os.replace(tmp_path, str(target))
-        except BaseException:
-            try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
-            raise
-
-        return target
+        return write_json_atomic(payload, target, prefix=f".{safe_name}_")
 
     def export_nat_json(
         self, output_dir: str | Path, mode: str = "enriched"
     ) -> Path:
         """Export parsed NAT rules to a deterministic JSON file."""
         export_mode = normalize_export_mode(mode)
-        out = Path(output_dir)
-        if out.exists() and not out.is_dir():
-            raise ValueError(
-                f"export_nat_json: '{out}' exists and is not a directory."
-            )
-        out.mkdir(parents=True, exist_ok=True)
+        out = self._prepare_output_dir(output_dir, "export_nat_json")
 
         xml_str = self._load_config_xml()
         root = self._parse_xml(xml_str, unwrap_configuration=True)
@@ -322,41 +345,37 @@ class JuniperSRXDriver(FirewallDriver):
             ),
         )
 
-        payload: dict[str, Any] = {
-            "vendor": "juniper_srx",
-            "device": self._device_name,
-            "schema_version": _NAT_SCHEMA_VERSION,
-            "mode": export_mode,
-            "nat_rule_count": len(rules),
-            "evaluation_model": _NAT_EVALUATION_MODEL,
-            "contexts": self._serialize_nat_contexts(rules, export_mode),
-        }
+        supporting_objects: dict[str, Any] | None = None
         if export_mode in {"enriched", "debug"}:
-            payload["supporting_objects"] = {
+            supporting_objects = {
                 "translation_pools": self._serialize_translation_pools(
                     pool_inventory, rules, export_mode
                 )
             }
 
+        payload = build_nat_payload(
+            rules,
+            vendor="juniper_srx",
+            device=self._device_name,
+            mode=export_mode,
+            schema_version=_NAT_SCHEMA_VERSION,
+            evaluation_model=_NAT_EVALUATION_MODEL,
+            supporting_objects=supporting_objects,
+        )
+
         safe_name = sanitize_device_name(self._device_name)
         target = out / f"{safe_name}.nat_rules.json"
+        return write_json_atomic(payload, target, prefix=f".{safe_name}_")
 
-        fd, tmp_path = tempfile.mkstemp(
-            dir=str(out), prefix=f".{safe_name}_", suffix=".tmp"
-        )
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as fp:
-                json.dump(payload, fp, indent=2, ensure_ascii=False)
-                fp.write("\n")
-            os.replace(tmp_path, str(target))
-        except BaseException:
-            try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
-            raise
-
-        return target
+    @staticmethod
+    def _prepare_output_dir(output_dir: str | Path, caller: str) -> Path:
+        out = Path(output_dir)
+        if out.exists() and not out.is_dir():
+            raise ValueError(
+                f"{caller}: '{out}' exists and is not a directory."
+            )
+        out.mkdir(parents=True, exist_ok=True)
+        return out
 
     # -- Internal helpers --------------------------------------------------
 
@@ -376,22 +395,10 @@ class JuniperSRXDriver(FirewallDriver):
 
     def _fetch_config_xml(self) -> str:
         try:
-            from netmiko import ConnectHandler  # type: ignore[import-untyped]
-        except ImportError as exc:
-            raise ImportError(
-                "netmiko is required for live mode. "
-                "Install it with: pip install netmiko"
-            ) from exc
-
-        try:
-            device = {
-                "device_type": "juniper_junos",
-                "host": self._host,
-                "username": self._username,
-                "password": self._password,
-            }
-            with ConnectHandler(**device) as conn:
+            with self._session() as conn:
                 return cast(str, conn.send_command(_CONFIG_COMMAND))
+        except ConnectionError:
+            raise
         except Exception as exc:
             raise ConnectionError(
                 f"Failed to fetch configuration from {self._host}: {exc}"
@@ -401,21 +408,7 @@ class JuniperSRXDriver(FirewallDriver):
         self,
     ) -> tuple[str, dict[PolicyHitCountKey, int], str | None]:
         try:
-            from netmiko import ConnectHandler
-        except ImportError as exc:
-            raise ImportError(
-                "netmiko is required for live mode. "
-                "Install it with: pip install netmiko"
-            ) from exc
-
-        try:
-            device = {
-                "device_type": "juniper_junos",
-                "host": self._host,
-                "username": self._username,
-                "password": self._password,
-            }
-            with ConnectHandler(**device) as conn:
+            with self._session() as conn:
                 try:
                     hit_count_output: str | None = conn.send_command(
                         _HIT_COUNT_COMMAND
@@ -423,6 +416,8 @@ class JuniperSRXDriver(FirewallDriver):
                 except Exception:
                     hit_count_output = None
                 config_output: str = conn.send_command(_CONFIG_COMMAND)
+        except ConnectionError:
+            raise
         except Exception as exc:
             raise ConnectionError(
                 f"Failed to fetch configuration from {self._host}: {exc}"
@@ -690,35 +685,6 @@ class JuniperSRXDriver(FirewallDriver):
             ),
             debug=FirewallRuleDebug(raw=raw),
         )
-
-    @staticmethod
-    def _serialize_contexts(
-        rules: list[FirewallRuleRecord], mode: str
-    ) -> list[dict[str, Any]]:
-        contexts: list[dict[str, Any]] = []
-        grouped: dict[str, dict[str, Any]] = {}
-
-        for record in rules:
-            context_id = record.context.context_id
-            if context_id not in grouped:
-                grouped[context_id] = {
-                    "context": record.context.model_dump(exclude_none=True),
-                    "rule_count": 0,
-                    "rules": [],
-                }
-                contexts.append(grouped[context_id])
-
-            entry = grouped[context_id]
-            entry["rules"].append(
-                record.export_rule(
-                    mode,
-                    include_vendor=False,
-                    include_device=False,
-                )
-            )
-            entry["rule_count"] += 1
-
-        return contexts
 
     def _extract_nat(
         self, root: ET.Element
@@ -1259,35 +1225,6 @@ class JuniperSRXDriver(FirewallDriver):
         )
 
         return "translate", NatMapping(forward=forward, reverse=reverse)
-
-    @staticmethod
-    def _serialize_nat_contexts(
-        rules: list[NatRuleRecord], mode: str
-    ) -> list[dict[str, Any]]:
-        contexts: list[dict[str, Any]] = []
-        grouped: dict[str, dict[str, Any]] = {}
-
-        for record in rules:
-            context_id = record.context.context_id
-            if context_id not in grouped:
-                grouped[context_id] = {
-                    "context": record.context.model_dump(exclude_none=True),
-                    "rule_count": 0,
-                    "rules": [],
-                }
-                contexts.append(grouped[context_id])
-
-            entry = grouped[context_id]
-            entry["rules"].append(
-                record.export_rule(
-                    mode,
-                    include_vendor=False,
-                    include_device=False,
-                )
-            )
-            entry["rule_count"] += 1
-
-        return contexts
 
     @classmethod
     def _serialize_translation_pools(
