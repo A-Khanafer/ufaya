@@ -1,0 +1,447 @@
+{
+  "vendor": "juniper_srx",
+  "device": "fw-snapshot",
+  "schema_version": 2,
+  "mode": "debug",
+  "nat_rule_count": 6,
+  "evaluation_model": {
+    "nat_type_precedence": [
+      "static",
+      "destination",
+      "source"
+    ],
+    "rule_order_within_context": "top_down_first_match"
+  },
+  "contexts": [
+    {
+      "context": {
+        "context_id": "static:static-public",
+        "nat_type": "static",
+        "priority_rank": 1,
+        "context_order": 1,
+        "rulebase": "security_nat",
+        "rule_set": "static-public",
+        "from_zones": [
+          "untrust"
+        ]
+      },
+      "rule_count": 1,
+      "rules": [
+        {
+          "nat_type": "static",
+          "name": "static-web",
+          "conditions": {
+            "source": [
+              "any"
+            ],
+            "destination": [
+              "198.51.100.200/32"
+            ],
+            "destination_refs": [
+              "198.51.100.200/32"
+            ]
+          },
+          "action": "translate",
+          "enabled": true,
+          "mapping": {
+            "forward": {
+              "summary": "destination 198.51.100.200/32 -> 10.10.10.10/32:9443",
+              "original": {
+                "field": "destination",
+                "addresses": [
+                  "198.51.100.200/32"
+                ]
+              },
+              "translated": {
+                "field": "destination",
+                "addresses": [
+                  "10.10.10.10/32"
+                ],
+                "ports": [
+                  "9443"
+                ],
+                "ref": "internal-web"
+              },
+              "mapping_kind": "fixed",
+              "determinism": "exact",
+              "resolution_status": "resolved"
+            },
+            "reverse": {
+              "summary": "source 10.10.10.10/32 -> 198.51.100.200/32",
+              "original": {
+                "field": "source",
+                "addresses": [
+                  "10.10.10.10/32"
+                ]
+              },
+              "translated": {
+                "field": "source",
+                "addresses": [
+                  "198.51.100.200/32"
+                ]
+              },
+              "mapping_kind": "fixed",
+              "determinism": "exact",
+              "resolution_status": "resolved"
+            }
+          },
+          "vendor_rule_id": "static-web",
+          "sequence": 1,
+          "raw": {
+            "name": "static-web",
+            "static-nat-rule-match": {
+              "destination-address": {
+                "name": "198.51.100.200/32"
+              }
+            },
+            "then": {
+              "static-nat": {
+                "prefix-name": "internal-web",
+                "mapped-port": "9443"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "context": {
+        "context_id": "destination:public-services",
+        "nat_type": "destination",
+        "priority_rank": 2,
+        "context_order": 1,
+        "rulebase": "security_nat",
+        "rule_set": "public-services",
+        "from_zones": [
+          "untrust"
+        ]
+      },
+      "rule_count": 1,
+      "rules": [
+        {
+          "nat_type": "destination",
+          "name": "dnat-web",
+          "conditions": {
+            "source": [
+              "any"
+            ],
+            "destination": [
+              "203.0.113.10/32"
+            ],
+            "destination_ports": [
+              "443"
+            ],
+            "protocols": [
+              "tcp"
+            ],
+            "destination_refs": [
+              "203.0.113.10/32"
+            ]
+          },
+          "action": "translate",
+          "enabled": true,
+          "mapping": {
+            "forward": {
+              "summary": "destination 203.0.113.10/32:443 -> 10.10.10.10/32:8443",
+              "original": {
+                "field": "destination",
+                "addresses": [
+                  "203.0.113.10/32"
+                ],
+                "ports": [
+                  "443"
+                ]
+              },
+              "translated": {
+                "field": "destination",
+                "addresses": [
+                  "10.10.10.10/32"
+                ],
+                "ports": [
+                  "8443"
+                ],
+                "ref": "web-dnat"
+              },
+              "mapping_kind": "pool",
+              "determinism": "exact",
+              "resolution_status": "resolved"
+            }
+          },
+          "vendor_rule_id": "dnat-web",
+          "sequence": 1,
+          "description": "Publish internal web service",
+          "raw": {
+            "name": "dnat-web",
+            "description": "Publish internal web service",
+            "dest-nat-rule-match": {
+              "destination-address": {
+                "name": "203.0.113.10/32"
+              },
+              "destination-port": "443",
+              "protocol": "tcp"
+            },
+            "then": {
+              "destination-nat": {
+                "pool": "web-dnat"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "context": {
+        "context_id": "source:trust-to-untrust",
+        "nat_type": "source",
+        "priority_rank": 3,
+        "context_order": 1,
+        "rulebase": "security_nat",
+        "rule_set": "trust-to-untrust",
+        "from_zones": [
+          "trust"
+        ],
+        "to_zones": [
+          "untrust"
+        ]
+      },
+      "rule_count": 4,
+      "rules": [
+        {
+          "nat_type": "source",
+          "name": "snat-pool",
+          "conditions": {
+            "source": [
+              "10.0.0.0/24"
+            ],
+            "destination": [
+              "any"
+            ],
+            "source_refs": [
+              "client-net"
+            ],
+            "destination_refs": [
+              "any"
+            ]
+          },
+          "action": "translate",
+          "enabled": true,
+          "mapping": {
+            "forward": {
+              "summary": "source 10.0.0.0/24 -> 198.51.100.10/32",
+              "original": {
+                "field": "source",
+                "addresses": [
+                  "10.0.0.0/24"
+                ]
+              },
+              "translated": {
+                "field": "source",
+                "addresses": [
+                  "198.51.100.10/32"
+                ],
+                "ref": "internet-snat"
+              },
+              "mapping_kind": "pool",
+              "determinism": "exact",
+              "resolution_status": "resolved"
+            }
+          },
+          "vendor_rule_id": "snat-pool",
+          "sequence": 1,
+          "description": "Translate trust clients to internet pool",
+          "raw": {
+            "name": "snat-pool",
+            "description": "Translate trust clients to internet pool",
+            "src-nat-rule-match": {
+              "source-address": {
+                "name": "client-net"
+              },
+              "destination-address": {
+                "name": "any"
+              }
+            },
+            "then": {
+              "source-nat": {
+                "pool": "internet-snat"
+              }
+            }
+          }
+        },
+        {
+          "nat_type": "source",
+          "name": "snat-interface",
+          "conditions": {
+            "source": [
+              "10.1.0.0/24"
+            ],
+            "destination": [
+              "any"
+            ],
+            "protocols": [
+              "tcp"
+            ],
+            "source_refs": [
+              "guest-net"
+            ],
+            "destination_refs": [
+              "any"
+            ]
+          },
+          "action": "translate",
+          "enabled": true,
+          "mapping": {
+            "forward": {
+              "summary": "source 10.1.0.0/24 -> interface_address",
+              "original": {
+                "field": "source",
+                "addresses": [
+                  "10.1.0.0/24"
+                ]
+              },
+              "translated": {
+                "field": "source",
+                "address_source": "interface_address"
+              },
+              "mapping_kind": "interface_address",
+              "determinism": "dynamic",
+              "resolution_status": "resolved"
+            }
+          },
+          "vendor_rule_id": "snat-interface",
+          "sequence": 2,
+          "raw": {
+            "name": "snat-interface",
+            "src-nat-rule-match": {
+              "source-address-name": {
+                "name": "guest-net"
+              },
+              "destination-address": {
+                "name": "any"
+              },
+              "protocol": "tcp"
+            },
+            "then": {
+              "source-nat": {
+                "interface": ""
+              }
+            }
+          }
+        },
+        {
+          "nat_type": "source",
+          "name": "snat-any",
+          "conditions": {
+            "source": [
+              "any"
+            ],
+            "destination": [
+              "any"
+            ]
+          },
+          "action": "translate",
+          "enabled": true,
+          "mapping": {
+            "forward": {
+              "summary": "source any -> 198.51.100.10/32",
+              "original": {
+                "field": "source"
+              },
+              "translated": {
+                "field": "source",
+                "addresses": [
+                  "198.51.100.10/32"
+                ],
+                "ref": "internet-snat"
+              },
+              "mapping_kind": "pool",
+              "determinism": "exact",
+              "resolution_status": "resolved"
+            }
+          },
+          "vendor_rule_id": "snat-any",
+          "sequence": 3,
+          "raw": {
+            "name": "snat-any",
+            "then": {
+              "source-nat": {
+                "pool": "internet-snat"
+              }
+            }
+          }
+        },
+        {
+          "nat_type": "source",
+          "name": "snat-off",
+          "conditions": {
+            "source": [
+              "any"
+            ],
+            "destination": [
+              "172.16.0.0/24"
+            ],
+            "source_refs": [
+              "any"
+            ],
+            "destination_refs": [
+              "partner-net"
+            ]
+          },
+          "action": "no_translate",
+          "enabled": false,
+          "vendor_rule_id": "snat-off",
+          "sequence": 4,
+          "raw": {
+            "name": "snat-off",
+            "src-nat-rule-match": {
+              "source-address": {
+                "name": "any"
+              },
+              "destination-address-name": {
+                "name": "partner-net"
+              }
+            },
+            "then": {
+              "source-nat": {
+                "off": ""
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "supporting_objects": {
+    "translation_pools": [
+      {
+        "name": "web-dnat",
+        "nat_type": "destination",
+        "addresses": [
+          "10.10.10.10/32"
+        ],
+        "ports": [
+          "8443"
+        ],
+        "description": "Forward public HTTPS to internal web server",
+        "raw": {
+          "name": "web-dnat",
+          "description": "Forward public HTTPS to internal web server",
+          "address": "10.10.10.10/32",
+          "port": "8443"
+        }
+      },
+      {
+        "name": "internet-snat",
+        "nat_type": "source",
+        "addresses": [
+          "198.51.100.10/32"
+        ],
+        "description": "SNAT pool for internet egress",
+        "raw": {
+          "name": "internet-snat",
+          "description": "SNAT pool for internet egress",
+          "address": "198.51.100.10/32"
+        }
+      }
+    ]
+  }
+}

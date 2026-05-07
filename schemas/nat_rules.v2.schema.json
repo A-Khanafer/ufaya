@@ -1,0 +1,210 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/A-Khanafer/ufaya/blob/main/schemas/nat_rules.v2.schema.json",
+  "title": "UFAYA nat_rules export (schema_version 2)",
+  "description": "Canonical JSON shape produced by NatReader.export_nat_json. Strict: additionalProperties is disallowed throughout so unintended new fields trigger a schema update.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "vendor",
+    "device",
+    "schema_version",
+    "mode",
+    "nat_rule_count",
+    "evaluation_model",
+    "contexts"
+  ],
+  "properties": {
+    "vendor": { "type": "string" },
+    "device": { "type": "string" },
+    "schema_version": { "const": 2 },
+    "mode": { "$ref": "#/$defs/exportMode" },
+    "nat_rule_count": { "type": "integer", "minimum": 0 },
+    "evaluation_model": { "$ref": "#/$defs/evaluationModel" },
+    "contexts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/contextGroup" }
+    },
+    "supporting_objects": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Present only in enriched and debug modes.",
+      "properties": {
+        "translation_pools": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/translationPool" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "exportMode": {
+      "type": "string",
+      "enum": ["minimal", "enriched", "debug"]
+    },
+    "evaluationModel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nat_type_precedence", "rule_order_within_context"],
+      "properties": {
+        "nat_type_precedence": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "rule_order_within_context": { "type": "string" }
+      }
+    },
+    "contextGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["context", "rule_count", "rules"],
+      "properties": {
+        "context": { "$ref": "#/$defs/natContext" },
+        "rule_count": { "type": "integer", "minimum": 0 },
+        "rules": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/natRule" }
+        }
+      }
+    },
+    "natContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "context_id",
+        "nat_type",
+        "priority_rank",
+        "context_order",
+        "rulebase"
+      ],
+      "properties": {
+        "context_id": { "type": "string" },
+        "nat_type": { "$ref": "#/$defs/natType" },
+        "priority_rank": { "type": "integer" },
+        "context_order": { "type": "integer" },
+        "rulebase": { "type": "string" },
+        "rule_set": { "type": "string" },
+        "from_zones": { "type": "array", "items": { "type": "string" } },
+        "to_zones": { "type": "array", "items": { "type": "string" } },
+        "from_interfaces": { "type": "array", "items": { "type": "string" } },
+        "to_interfaces": { "type": "array", "items": { "type": "string" } },
+        "from_routing_instances": { "type": "array", "items": { "type": "string" } },
+        "to_routing_instances": { "type": "array", "items": { "type": "string" } },
+        "vendor_context": { "type": "object" }
+      }
+    },
+    "natRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nat_type", "name", "conditions", "action", "enabled"],
+      "properties": {
+        "vendor": { "type": "string" },
+        "device": { "type": "string" },
+        "vendor_rule_id": { "type": "string" },
+        "nat_type": { "$ref": "#/$defs/natType" },
+        "name": { "type": "string" },
+        "conditions": { "$ref": "#/$defs/natConditions" },
+        "action": {
+          "type": "string",
+          "enum": ["translate", "no_translate"]
+        },
+        "enabled": { "type": "boolean" },
+        "sequence": { "type": ["integer", "null"] },
+        "description": { "type": "string" },
+        "mapping": { "$ref": "#/$defs/natMapping" },
+        "raw": {
+          "type": "object",
+          "description": "Lossless vendor payload. Present only in debug mode."
+        }
+      }
+    },
+    "natConditions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source": { "type": "array", "items": { "type": "string" } },
+        "destination": { "type": "array", "items": { "type": "string" } },
+        "source_ports": { "type": "array", "items": { "type": "string" } },
+        "destination_ports": { "type": "array", "items": { "type": "string" } },
+        "protocols": { "type": "array", "items": { "type": "string" } },
+        "applications": { "type": "array", "items": { "type": "string" } },
+        "source_refs": { "type": "array", "items": { "type": "string" } },
+        "destination_refs": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "natMapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["forward"],
+      "properties": {
+        "forward": { "$ref": "#/$defs/natRewrite" },
+        "reverse": { "$ref": "#/$defs/natRewrite" }
+      }
+    },
+    "natRewrite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "summary",
+        "original",
+        "translated",
+        "mapping_kind",
+        "determinism",
+        "resolution_status"
+      ],
+      "properties": {
+        "summary": { "type": "string" },
+        "original": { "$ref": "#/$defs/natMappingSide" },
+        "translated": { "$ref": "#/$defs/natMappingSide" },
+        "mapping_kind": {
+          "type": "string",
+          "enum": ["fixed", "pool", "interface_address"]
+        },
+        "determinism": {
+          "type": "string",
+          "enum": ["exact", "set_based", "dynamic"]
+        },
+        "resolution_status": {
+          "type": "string",
+          "enum": ["resolved", "unresolved"]
+        }
+      }
+    },
+    "natMappingSide": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field"],
+      "properties": {
+        "field": {
+          "type": "string",
+          "enum": ["source", "destination"]
+        },
+        "addresses": { "type": "array", "items": { "type": "string" } },
+        "ports": { "type": "array", "items": { "type": "string" } },
+        "ref": { "type": "string" },
+        "address_source": { "type": "string" }
+      }
+    },
+    "translationPool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "nat_type"],
+      "properties": {
+        "name": { "type": "string" },
+        "nat_type": { "$ref": "#/$defs/natType" },
+        "addresses": { "type": "array", "items": { "type": "string" } },
+        "ports": { "type": "array", "items": { "type": "string" } },
+        "description": { "type": "string" },
+        "routing_instance": { "type": "string" },
+        "raw": {
+          "type": "object",
+          "description": "Lossless vendor payload. Present only in debug mode."
+        }
+      }
+    },
+    "natType": {
+      "type": "string",
+      "enum": ["source", "destination", "static"]
+    }
+  }
+}

@@ -1,0 +1,283 @@
+{
+  "vendor": "juniper_srx",
+  "device": "fw-snapshot",
+  "schema_version": 3,
+  "mode": "enriched",
+  "rule_count": 6,
+  "evaluation_model": {
+    "context_selection_order": [
+      "intra_zone",
+      "inter_zone",
+      "global",
+      "implicit_default_deny"
+    ],
+    "rule_order_within_context": "top_down_first_match",
+    "default_action": "deny"
+  },
+  "contexts": [
+    {
+      "context": {
+        "context_id": "inter_zone:trust->untrust",
+        "scope": "inter_zone",
+        "priority_rank": 2,
+        "context_order": 1,
+        "rulebase": "security_policies",
+        "from_zone": "trust",
+        "to_zone": "untrust"
+      },
+      "rule_count": 3,
+      "rules": [
+        {
+          "vendor_rule_id": "allow-dns",
+          "name": "allow-dns",
+          "source": [
+            "any"
+          ],
+          "destination": [
+            "8.8.8.8/32"
+          ],
+          "service": [
+            "junos-dns-udp"
+          ],
+          "action": "allow",
+          "enabled": true,
+          "sequence": 1,
+          "description": "Allow DNS to external servers",
+          "log_actions": [
+            "session-init"
+          ],
+          "hit_count": null,
+          "source_refs": [
+            "any"
+          ],
+          "destination_refs": [
+            "external-dns"
+          ],
+          "service_refs": [
+            "junos-dns-udp"
+          ],
+          "service_details": [
+            {
+              "label": "junos-dns-udp",
+              "resolved": false
+            }
+          ]
+        },
+        {
+          "vendor_rule_id": "allow-web",
+          "name": "allow-web",
+          "source": [
+            "10.0.1.10/32",
+            "10.0.1.20/32"
+          ],
+          "destination": [
+            "any"
+          ],
+          "service": [
+            "junos-http",
+            "junos-https"
+          ],
+          "action": "allow",
+          "enabled": true,
+          "sequence": 2,
+          "hit_count": null,
+          "source_refs": [
+            "servers"
+          ],
+          "destination_refs": [
+            "any"
+          ],
+          "service_refs": [
+            "junos-http",
+            "junos-https"
+          ],
+          "service_details": [
+            {
+              "label": "junos-http",
+              "resolved": false
+            },
+            {
+              "label": "junos-https",
+              "resolved": false
+            }
+          ]
+        },
+        {
+          "vendor_rule_id": "deny-all",
+          "name": "deny-all",
+          "source": [
+            "any"
+          ],
+          "destination": [
+            "any"
+          ],
+          "service": [
+            "any"
+          ],
+          "action": "deny",
+          "enabled": true,
+          "sequence": 3,
+          "log_actions": [
+            "session-init"
+          ],
+          "hit_count": null,
+          "source_refs": [
+            "any"
+          ],
+          "destination_refs": [
+            "any"
+          ],
+          "service_refs": [
+            "any"
+          ],
+          "service_details": [
+            {
+              "label": "any",
+              "resolved": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "context": {
+        "context_id": "inter_zone:untrust->dmz",
+        "scope": "inter_zone",
+        "priority_rank": 2,
+        "context_order": 2,
+        "rulebase": "security_policies",
+        "from_zone": "untrust",
+        "to_zone": "dmz"
+      },
+      "rule_count": 2,
+      "rules": [
+        {
+          "vendor_rule_id": "allow-inbound-web",
+          "name": "allow-inbound-web",
+          "source": [
+            "any"
+          ],
+          "destination": [
+            "172.16.0.10/32"
+          ],
+          "service": [
+            "junos-http",
+            "junos-https",
+            "tcp/8080"
+          ],
+          "action": "allow",
+          "enabled": true,
+          "sequence": 1,
+          "log_actions": [
+            "session-init"
+          ],
+          "hit_count": null,
+          "source_refs": [
+            "any"
+          ],
+          "destination_refs": [
+            "dmz-web"
+          ],
+          "service_refs": [
+            "web-apps"
+          ],
+          "service_details": [
+            {
+              "label": "junos-http",
+              "resolved": false
+            },
+            {
+              "label": "junos-https",
+              "resolved": false
+            },
+            {
+              "label": "custom-app",
+              "protocol": "tcp",
+              "destination_ports": [
+                "8080"
+              ],
+              "resolved": true
+            }
+          ]
+        },
+        {
+          "vendor_rule_id": "reject-rest",
+          "name": "reject-rest",
+          "source": [
+            "any"
+          ],
+          "destination": [
+            "any"
+          ],
+          "service": [
+            "any"
+          ],
+          "action": "reject",
+          "enabled": true,
+          "sequence": 2,
+          "hit_count": null,
+          "source_refs": [
+            "any"
+          ],
+          "destination_refs": [
+            "any"
+          ],
+          "service_refs": [
+            "any"
+          ],
+          "service_details": [
+            {
+              "label": "any",
+              "resolved": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "context": {
+        "context_id": "global",
+        "scope": "global",
+        "priority_rank": 3,
+        "context_order": 1,
+        "rulebase": "security_policies",
+        "section": "global"
+      },
+      "rule_count": 1,
+      "rules": [
+        {
+          "vendor_rule_id": "global-deny",
+          "name": "global-deny",
+          "source": [
+            "any"
+          ],
+          "destination": [
+            "any"
+          ],
+          "service": [
+            "any"
+          ],
+          "action": "deny",
+          "enabled": true,
+          "sequence": 1,
+          "hit_count": null,
+          "source_refs": [
+            "any"
+          ],
+          "destination_refs": [
+            "any"
+          ],
+          "service_refs": [
+            "any"
+          ],
+          "service_details": [
+            {
+              "label": "any",
+              "resolved": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

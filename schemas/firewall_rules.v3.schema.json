@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/A-Khanafer/ufaya/blob/main/schemas/firewall_rules.v3.schema.json",
+  "title": "UFAYA firewall_rules export (schema_version 3)",
+  "description": "Canonical JSON shape produced by FirewallReader.export_rules_json. Strict: additionalProperties is disallowed throughout so unintended new fields trigger a schema update.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "vendor",
+    "device",
+    "schema_version",
+    "mode",
+    "rule_count",
+    "evaluation_model",
+    "contexts"
+  ],
+  "properties": {
+    "vendor": { "type": "string" },
+    "device": { "type": "string" },
+    "schema_version": { "const": 3 },
+    "mode": { "$ref": "#/$defs/exportMode" },
+    "rule_count": { "type": "integer", "minimum": 0 },
+    "hit_counts_collected_at": {
+      "type": "string",
+      "description": "UTC ISO-8601 timestamp; present only when live hit counts were successfully collected."
+    },
+    "evaluation_model": { "$ref": "#/$defs/evaluationModel" },
+    "contexts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/contextGroup" }
+    }
+  },
+  "$defs": {
+    "exportMode": {
+      "type": "string",
+      "enum": ["minimal", "enriched", "debug"]
+    },
+    "evaluationModel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "context_selection_order",
+        "rule_order_within_context",
+        "default_action"
+      ],
+      "properties": {
+        "context_selection_order": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "rule_order_within_context": { "type": "string" },
+        "default_action": { "type": "string" }
+      }
+    },
+    "contextGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["context", "rule_count", "rules"],
+      "properties": {
+        "context": { "$ref": "#/$defs/ruleContext" },
+        "rule_count": { "type": "integer", "minimum": 0 },
+        "rules": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/firewallRule" }
+        }
+      }
+    },
+    "ruleContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "context_id",
+        "scope",
+        "priority_rank",
+        "context_order",
+        "rulebase"
+      ],
+      "properties": {
+        "context_id": { "type": "string" },
+        "scope": { "type": "string" },
+        "priority_rank": { "type": "integer" },
+        "context_order": { "type": "integer" },
+        "rulebase": { "type": "string" },
+        "section": { "type": "string" },
+        "from_zone": { "type": "string" },
+        "to_zone": { "type": "string" },
+        "vendor_context": { "type": "object" }
+      }
+    },
+    "firewallRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "source",
+        "destination",
+        "service",
+        "action",
+        "enabled",
+        "hit_count"
+      ],
+      "properties": {
+        "vendor": { "type": "string" },
+        "device": { "type": "string" },
+        "vendor_rule_id": { "type": "string" },
+        "name": { "type": "string" },
+        "source": { "type": "array", "items": { "type": "string" } },
+        "destination": { "type": "array", "items": { "type": "string" } },
+        "service": { "type": "array", "items": { "type": "string" } },
+        "action": {
+          "type": "string",
+          "description": "Canonical action label. The library currently emits allow/deny/reject; vendors that use other terms should normalize before emit."
+        },
+        "enabled": { "type": "boolean" },
+        "sequence": { "type": ["integer", "null"] },
+        "hit_count": { "type": ["integer", "null"] },
+        "description": { "type": "string" },
+        "log_actions": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "source_refs": { "type": "array", "items": { "type": "string" } },
+        "destination_refs": { "type": "array", "items": { "type": "string" } },
+        "service_refs": { "type": "array", "items": { "type": "string" } },
+        "service_details": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/serviceDetail" }
+        },
+        "raw": {
+          "type": "object",
+          "description": "Lossless vendor payload. Present only in debug mode."
+        }
+      }
+    },
+    "serviceDetail": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resolved"],
+      "properties": {
+        "label": { "type": "string" },
+        "protocol": { "type": "string" },
+        "source_ports": { "type": "array", "items": { "type": "string" } },
+        "destination_ports": { "type": "array", "items": { "type": "string" } },
+        "application_protocol": { "type": "string" },
+        "icmp_type": { "type": "integer" },
+        "icmp_code": { "type": "integer" },
+        "icmp6_type": { "type": "integer" },
+        "icmp6_code": { "type": "integer" },
+        "rpc_program_number": { "type": "string" },
+        "inactivity_timeout": { "type": "string" },
+        "resolved": { "type": "boolean" }
+      }
+    }
+  }
+}

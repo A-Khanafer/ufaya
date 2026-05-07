@@ -43,6 +43,7 @@ dev = [
     "ruff",
     "mypy",
     "types-requests",
+    "jsonschema>=4.0",
 ]
 
 [tool.setuptools]

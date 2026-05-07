@@ -1,0 +1,269 @@
+{
+  "vendor": "juniper_srx",
+  "device": "fw-snapshot",
+  "schema_version": 2,
+  "mode": "minimal",
+  "nat_rule_count": 5,
+  "evaluation_model": {
+    "nat_type_precedence": [
+      "static",
+      "destination",
+      "source"
+    ],
+    "rule_order_within_context": "top_down_first_match"
+  },
+  "contexts": [
+    {
+      "context": {
+        "context_id": "destination:public-services",
+        "nat_type": "destination",
+        "priority_rank": 2,
+        "context_order": 1,
+        "rulebase": "security_nat",
+        "rule_set": "public-services",
+        "from_zones": [
+          "untrust"
+        ]
+      },
+      "rule_count": 1,
+      "rules": [
+        {
+          "nat_type": "destination",
+          "name": "dnat-app-only",
+          "conditions": {
+            "source": [
+              "any"
+            ],
+            "destination": [
+              "203.0.113.10/32"
+            ],
+            "destination_ports": [
+              "8443"
+            ],
+            "protocols": [
+              "tcp"
+            ],
+            "applications": [
+              "tcp-8443"
+            ]
+          },
+          "action": "translate",
+          "enabled": true,
+          "mapping": {
+            "forward": {
+              "summary": "destination 203.0.113.10/32:8443 -> 10.10.10.10/32-10.10.10.12/32:8443",
+              "original": {
+                "field": "destination",
+                "addresses": [
+                  "203.0.113.10/32"
+                ],
+                "ports": [
+                  "8443"
+                ]
+              },
+              "translated": {
+                "field": "destination",
+                "addresses": [
+                  "10.10.10.10/32-10.10.10.12/32"
+                ],
+                "ports": [
+                  "8443"
+                ],
+                "ref": "web-dnat-range"
+              },
+              "mapping_kind": "pool",
+              "determinism": "set_based",
+              "resolution_status": "resolved"
+            }
+          },
+          "vendor_rule_id": "dnat-app-only",
+          "sequence": 1
+        }
+      ]
+    },
+    {
+      "context": {
+        "context_id": "source:trust-to-untrust",
+        "nat_type": "source",
+        "priority_rank": 3,
+        "context_order": 1,
+        "rulebase": "security_nat",
+        "rule_set": "trust-to-untrust",
+        "from_zones": [
+          "trust"
+        ],
+        "to_zones": [
+          "untrust"
+        ]
+      },
+      "rule_count": 4,
+      "rules": [
+        {
+          "nat_type": "source",
+          "name": "snat-any",
+          "conditions": {
+            "source": [
+              "any"
+            ],
+            "destination": [
+              "any"
+            ]
+          },
+          "action": "translate",
+          "enabled": true,
+          "mapping": {
+            "forward": {
+              "summary": "source any -> 198.51.100.20/32-198.51.100.30/32",
+              "original": {
+                "field": "source"
+              },
+              "translated": {
+                "field": "source",
+                "addresses": [
+                  "198.51.100.20/32-198.51.100.30/32"
+                ],
+                "ref": "range-snat"
+              },
+              "mapping_kind": "pool",
+              "determinism": "set_based",
+              "resolution_status": "resolved"
+            }
+          },
+          "vendor_rule_id": "snat-any",
+          "sequence": 1
+        },
+        {
+          "nat_type": "source",
+          "name": "snat-source-only",
+          "conditions": {
+            "source": [
+              "10.0.0.0/24"
+            ],
+            "destination": [
+              "any"
+            ]
+          },
+          "action": "translate",
+          "enabled": true,
+          "mapping": {
+            "forward": {
+              "summary": "source 10.0.0.0/24 -> 198.51.100.20/32-198.51.100.30/32",
+              "original": {
+                "field": "source",
+                "addresses": [
+                  "10.0.0.0/24"
+                ]
+              },
+              "translated": {
+                "field": "source",
+                "addresses": [
+                  "198.51.100.20/32-198.51.100.30/32"
+                ],
+                "ref": "range-snat"
+              },
+              "mapping_kind": "pool",
+              "determinism": "set_based",
+              "resolution_status": "resolved"
+            }
+          },
+          "vendor_rule_id": "snat-source-only",
+          "sequence": 2
+        },
+        {
+          "nat_type": "source",
+          "name": "snat-app",
+          "conditions": {
+            "source": [
+              "10.0.0.0/24"
+            ],
+            "destination": [
+              "any"
+            ],
+            "destination_ports": [
+              "8080"
+            ],
+            "protocols": [
+              "tcp"
+            ],
+            "applications": [
+              "tcp-8080"
+            ]
+          },
+          "action": "translate",
+          "enabled": true,
+          "mapping": {
+            "forward": {
+              "summary": "source 10.0.0.0/24 -> 198.51.100.20/32-198.51.100.30/32",
+              "original": {
+                "field": "source",
+                "addresses": [
+                  "10.0.0.0/24"
+                ]
+              },
+              "translated": {
+                "field": "source",
+                "addresses": [
+                  "198.51.100.20/32-198.51.100.30/32"
+                ],
+                "ref": "range-snat"
+              },
+              "mapping_kind": "pool",
+              "determinism": "set_based",
+              "resolution_status": "resolved"
+            }
+          },
+          "vendor_rule_id": "snat-app",
+          "sequence": 3
+        },
+        {
+          "nat_type": "source",
+          "name": "snat-mixed",
+          "conditions": {
+            "source": [
+              "any"
+            ],
+            "destination": [
+              "172.16.0.0/24"
+            ],
+            "source_ports": [
+              "1024-65535"
+            ],
+            "destination_ports": [
+              "53",
+              "111"
+            ],
+            "protocols": [
+              "udp",
+              "tcp"
+            ],
+            "applications": [
+              "rpc-app"
+            ]
+          },
+          "action": "translate",
+          "enabled": true,
+          "mapping": {
+            "forward": {
+              "summary": "source any -> 198.51.100.20/32-198.51.100.30/32",
+              "original": {
+                "field": "source"
+              },
+              "translated": {
+                "field": "source",
+                "addresses": [
+                  "198.51.100.20/32-198.51.100.30/32"
+                ],
+                "ref": "range-snat"
+              },
+              "mapping_kind": "pool",
+              "determinism": "set_based",
+              "resolution_status": "resolved"
+            }
+          },
+          "vendor_rule_id": "snat-mixed",
+          "sequence": 4
+        }
+      ]
+    }
+  ]
+}
