@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-05-11
+
 This is a breaking refactor of the public driver interface. The library is still pre-1.0, so back-compat aliases were not added; downstream code that used `FirewallDriver`, the skeleton drivers, or the removed `RuleContext.{package,vsys,vdom}` fields must be updated.
 
 ### Changed
@@ -202,7 +204,8 @@ This is a breaking refactor of the public driver interface. The library is still
 - `get_firewall_driver()` factory for vendor-based driver selection.
 - PEP 561 typing marker, test suite, and CI/dev tooling configuration.
 
-[Unreleased]: https://github.com/A-Khanafer/ufaya/compare/v0.6.3...HEAD
+[Unreleased]: https://github.com/A-Khanafer/ufaya/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/A-Khanafer/ufaya/compare/v0.6.3...v0.7.0
 [0.6.3]: https://github.com/A-Khanafer/ufaya/compare/v0.6.2...v0.6.3
 [0.6.2]: https://github.com/A-Khanafer/ufaya/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/A-Khanafer/ufaya/compare/v0.6.0...v0.6.1
