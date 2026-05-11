@@ -1,0 +1,244 @@
+{
+  "vendor": "juniper_srx",
+  "device": "fw-snapshot",
+  "schema_version": 3,
+  "mode": "enriched",
+  "rule_count": 4,
+  "evaluation_model": {
+    "context_selection_order": [
+      "intra_zone",
+      "inter_zone",
+      "global",
+      "implicit_default_deny"
+    ],
+    "rule_order_within_context": "top_down_first_match",
+    "default_action": "deny"
+  },
+  "contexts": [
+    {
+      "context": {
+        "context_id": "inter_zone:trust-intranet->untrust-intranet",
+        "scope": "inter_zone",
+        "priority_rank": 2,
+        "context_order": 1,
+        "rulebase": "security_policies",
+        "from_zone": "trust-intranet",
+        "to_zone": "untrust-intranet"
+      },
+      "rule_count": 4,
+      "rules": [
+        {
+          "vendor_rule_id": "10",
+          "name": "10",
+          "source": [
+            "any"
+          ],
+          "destination": [
+            "34.235.81.227/32"
+          ],
+          "service": [
+            "tcp/443"
+          ],
+          "action": "allow",
+          "enabled": true,
+          "sequence": 1,
+          "description": "S1 Access",
+          "log_actions": [
+            "session-init"
+          ],
+          "hit_count": null,
+          "source_refs": [
+            "any"
+          ],
+          "destination_refs": [
+            "34.235.81.227/32"
+          ],
+          "service_refs": [
+            "tcp-443"
+          ],
+          "service_details": [
+            {
+              "label": "tcp-443",
+              "protocol": "tcp",
+              "destination_ports": [
+                "443"
+              ],
+              "resolved": true
+            }
+          ]
+        },
+        {
+          "vendor_rule_id": "25",
+          "name": "25",
+          "source": [
+            "any"
+          ],
+          "destination": [
+            "3.19.111.8/32"
+          ],
+          "service": [
+            "tcp/23",
+            "tcp/22"
+          ],
+          "action": "allow",
+          "enabled": true,
+          "sequence": 2,
+          "description": "Test Internet IP with ipv4.telnetmyip.com",
+          "log_actions": [
+            "session-init"
+          ],
+          "hit_count": null,
+          "source_refs": [
+            "any"
+          ],
+          "destination_refs": [
+            "3.19.111.8/32"
+          ],
+          "service_refs": [
+            "tcp-23",
+            "tcp-22"
+          ],
+          "service_details": [
+            {
+              "label": "tcp-23",
+              "protocol": "tcp",
+              "destination_ports": [
+                "23"
+              ],
+              "resolved": true
+            },
+            {
+              "label": "tcp-22",
+              "protocol": "tcp",
+              "destination_ports": [
+                "22"
+              ],
+              "resolved": true
+            }
+          ]
+        },
+        {
+          "vendor_rule_id": "40",
+          "name": "40",
+          "source": [
+            "10.20.20.20/32",
+            "10.40.20.20/32"
+          ],
+          "destination": [
+            "207.164.234.193/32",
+            "207.164.234.129/32"
+          ],
+          "service": [
+            "tcp/53",
+            "udp/53",
+            "icmp",
+            "udp/33434-33534"
+          ],
+          "action": "allow",
+          "enabled": true,
+          "sequence": 3,
+          "description": "Public DNS from VLAB DNS",
+          "log_actions": [
+            "session-init"
+          ],
+          "hit_count": null,
+          "source_refs": [
+            "10.20.20.20/32",
+            "10.40.20.20/32"
+          ],
+          "destination_refs": [
+            "207.164.234.193/32",
+            "207.164.234.129/32"
+          ],
+          "service_refs": [
+            "tcp-53",
+            "udp-53",
+            "icmpv4"
+          ],
+          "service_details": [
+            {
+              "label": "tcp-53",
+              "protocol": "tcp",
+              "destination_ports": [
+                "53"
+              ],
+              "resolved": true
+            },
+            {
+              "label": "udp-53",
+              "protocol": "udp",
+              "destination_ports": [
+                "53"
+              ],
+              "resolved": true
+            },
+            {
+              "label": "icmpv4:echo",
+              "protocol": "icmp",
+              "icmp_type": 8,
+              "icmp_code": 0,
+              "resolved": true
+            },
+            {
+              "label": "icmpv4:traceroute",
+              "protocol": "udp",
+              "destination_ports": [
+                "33434-33534"
+              ],
+              "resolved": true
+            },
+            {
+              "label": "icmpv4:unreachable",
+              "protocol": "icmp",
+              "icmp_type": 3,
+              "resolved": true
+            }
+          ]
+        },
+        {
+          "vendor_rule_id": "50",
+          "name": "50",
+          "source": [
+            "any"
+          ],
+          "destination": [
+            "any"
+          ],
+          "service": [
+            "tcp/1024-65535->111"
+          ],
+          "action": "allow",
+          "enabled": true,
+          "sequence": 4,
+          "description": "Richer term fields",
+          "hit_count": null,
+          "source_refs": [
+            "any"
+          ],
+          "destination_refs": [
+            "any"
+          ],
+          "service_refs": [
+            "sunrpc-app"
+          ],
+          "service_details": [
+            {
+              "label": "sunrpc-app",
+              "protocol": "tcp",
+              "source_ports": [
+                "1024-65535"
+              ],
+              "destination_ports": [
+                "111"
+              ],
+              "application_protocol": "sunrpc",
+              "rpc_program_number": "100000",
+              "inactivity_timeout": "300",
+              "resolved": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

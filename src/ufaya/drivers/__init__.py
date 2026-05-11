@@ -1,8 +1,6 @@
-"""Vendor-specific firewall driver implementations."""
+"""Vendor-specific firewall driver implementations.
 
-from ufaya.drivers.cisco import CiscoDriver
-from ufaya.drivers.fortinet import FortinetDriver
-from ufaya.drivers.juniper import JuniperSRXDriver
-from ufaya.drivers.paloalto import PaloAltoDriver
-
-__all__ = ["CiscoDriver", "FortinetDriver", "JuniperSRXDriver", "PaloAltoDriver"]
+Drivers are not eagerly imported here. Use
+:func:`ufaya.get_firewall_driver` for runtime lookup, or import a driver
+directly (e.g. ``from ufaya.drivers.juniper import JuniperSRXDriver``).
+"""

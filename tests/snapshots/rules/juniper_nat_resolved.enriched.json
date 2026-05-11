@@ -1,0 +1,18 @@
+{
+  "vendor": "juniper_srx",
+  "device": "fw-snapshot",
+  "schema_version": 3,
+  "mode": "enriched",
+  "rule_count": 0,
+  "evaluation_model": {
+    "context_selection_order": [
+      "intra_zone",
+      "inter_zone",
+      "global",
+      "implicit_default_deny"
+    ],
+    "rule_order_within_context": "top_down_first_match",
+    "default_action": "deny"
+  },
+  "contexts": []
+}

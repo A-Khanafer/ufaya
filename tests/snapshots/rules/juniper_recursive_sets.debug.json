@@ -1,0 +1,78 @@
+{
+  "vendor": "juniper_srx",
+  "device": "fw-snapshot",
+  "schema_version": 3,
+  "mode": "debug",
+  "rule_count": 1,
+  "evaluation_model": {
+    "context_selection_order": [
+      "intra_zone",
+      "inter_zone",
+      "global",
+      "implicit_default_deny"
+    ],
+    "rule_order_within_context": "top_down_first_match",
+    "default_action": "deny"
+  },
+  "contexts": [
+    {
+      "context": {
+        "context_id": "inter_zone:trust->untrust",
+        "scope": "inter_zone",
+        "priority_rank": 2,
+        "context_order": 1,
+        "rulebase": "security_policies",
+        "from_zone": "trust",
+        "to_zone": "untrust"
+      },
+      "rule_count": 1,
+      "rules": [
+        {
+          "vendor_rule_id": "recursive-set-rule",
+          "name": "recursive-set-rule",
+          "source": [
+            "10.3.0.0/16",
+            "10.1.0.0/16",
+            "10.2.0.0/16"
+          ],
+          "destination": [
+            "any"
+          ],
+          "service": [
+            "any"
+          ],
+          "action": "allow",
+          "enabled": true,
+          "sequence": 1,
+          "hit_count": null,
+          "source_refs": [
+            "set-outer"
+          ],
+          "destination_refs": [
+            "any"
+          ],
+          "service_refs": [
+            "any"
+          ],
+          "service_details": [
+            {
+              "label": "any",
+              "resolved": true
+            }
+          ],
+          "raw": {
+            "name": "recursive-set-rule",
+            "match": {
+              "source-address": "set-outer",
+              "destination-address": "any",
+              "application": "any"
+            },
+            "then": {
+              "permit": ""
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

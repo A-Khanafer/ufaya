@@ -43,6 +43,7 @@ dev = [
     "ruff",
     "mypy",
     "types-requests",
+    "jsonschema>=4.0",
 ]
 
 [tool.setuptools]
@@ -68,5 +69,6 @@ select = ["E", "F", "I", "UP"]
 version_file = "src/ufaya/_version.py"
 
 [tool.mypy]
+python_version = "3.10"
 strict = true
 warn_return_any = true

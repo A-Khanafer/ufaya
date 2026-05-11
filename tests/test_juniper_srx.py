@@ -9,7 +9,6 @@ from unittest.mock import MagicMock, call, patch
 import pytest
 
 from ufaya.drivers.juniper import JuniperSRXDriver
-from ufaya.models.firewall_rule import FirewallRule
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -241,30 +240,13 @@ class TestConstructorValidation:
 
 
 class TestReadOnly:
-    def test_create_rule_raises(self):
-        d = JuniperSRXDriver(config_path=_fixture("juniper_actions.xml"))
-        with pytest.raises(NotImplementedError, match="read-only"):
-            d.create_rule(
-                FirewallRule(
-                    vendor="juniper_srx",
-                    device="x",
-                    name="r",
-                    source=["any"],
-                    destination=["any"],
-                    service=["any"],
-                    action="allow",
-                )
-            )
+    def test_driver_does_not_implement_writer_capability(self):
+        from ufaya.firewall.base import FirewallReader, FirewallWriter, NatReader
 
-    def test_delete_rule_raises(self):
         d = JuniperSRXDriver(config_path=_fixture("juniper_actions.xml"))
-        with pytest.raises(NotImplementedError, match="read-only"):
-            d.delete_rule("id-1")
-
-    def test_commit_raises(self):
-        d = JuniperSRXDriver(config_path=_fixture("juniper_actions.xml"))
-        with pytest.raises(NotImplementedError, match="read-only"):
-            d.commit()
+        assert isinstance(d, FirewallReader)
+        assert isinstance(d, NatReader)
+        assert not isinstance(d, FirewallWriter)
 
 
 # =====================================================================
@@ -694,6 +676,64 @@ class TestLiveFetch:
         ]
         assert len(records) == 3
         assert [record.rule.hit_count for record in records] == [5, 6, 7]
+
+    def test_with_block_reuses_single_ssh_session(self):
+        """Two calls inside `with driver:` must share one Netmiko session."""
+        # Trivial valid config XML for both rules and NAT extraction paths.
+        config_xml = (
+            "<rpc-reply><configuration>"
+            "<security><policies/><nat/></security>"
+            "</configuration></rpc-reply>"
+        )
+        mock_conn = MagicMock()
+        mock_conn.send_command.side_effect = ["", config_xml, config_xml]
+        mock_conn.__enter__ = MagicMock(return_value=mock_conn)
+        mock_conn.__exit__ = MagicMock(return_value=False)
+        mock_handler_cls = MagicMock(return_value=mock_conn)
+
+        with patch.dict(
+            "sys.modules",
+            {"netmiko": MagicMock(ConnectHandler=mock_handler_cls)},
+        ):
+            mod = _reload_juniper_driver_module()
+            d = mod.JuniperSRXDriver(
+                host="10.0.0.1", username="admin", password="secret"
+            )
+            with d:
+                d.get_rules()
+                d.get_nat_rules()
+
+        # ConnectHandler instantiated once across both calls.
+        mock_handler_cls.assert_called_once()
+        # Single __enter__ / __exit__ pair.
+        assert mock_conn.__enter__.call_count == 1
+        assert mock_conn.__exit__.call_count == 1
+
+    def test_standalone_call_auto_opens_and_closes(self):
+        """A bare get_rules() call (no `with`) must still open & close once."""
+        config_xml = (
+            "<rpc-reply><configuration>"
+            "<security><policies/></security>"
+            "</configuration></rpc-reply>"
+        )
+        mock_conn = MagicMock()
+        mock_conn.send_command.side_effect = ["", config_xml]
+        mock_conn.__enter__ = MagicMock(return_value=mock_conn)
+        mock_conn.__exit__ = MagicMock(return_value=False)
+        mock_handler_cls = MagicMock(return_value=mock_conn)
+
+        with patch.dict(
+            "sys.modules",
+            {"netmiko": MagicMock(ConnectHandler=mock_handler_cls)},
+        ):
+            mod = _reload_juniper_driver_module()
+            d = mod.JuniperSRXDriver(
+                host="10.0.0.1", username="admin", password="secret"
+            )
+            d.get_rules()  # no `with` block
+
+        mock_handler_cls.assert_called_once()
+        assert mock_conn.__exit__.call_count == 1
 
     def test_live_fetch_failure_propagates(self):
         mock_handler_cls = MagicMock(side_effect=Exception("Connection refused"))

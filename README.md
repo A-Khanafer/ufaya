@@ -16,9 +16,12 @@ The design follows the same architectural principle used by tools like NAPALM, w
 | Vendor | Driver | Status |
 |---|---|---|
 | Juniper SRX | `juniper_srx` | Read-only XML ingestion + firewall-rule JSON export with live policy hit counts + XML-first NAT JSON export |
-| Palo Alto | `paloalto` | Skeleton |
-| Fortinet | `fortinet` | Skeleton |
-| Cisco | `cisco` | Skeleton |
+| Palo Alto | `paloalto` | Planned |
+| Fortinet | `fortinet` | Planned |
+| Cisco | `cisco` | Planned |
+
+Drivers can also be contributed out-of-tree and registered via the
+`ufaya.drivers` entry-point group; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Juniper SRX exports
 
@@ -57,6 +60,49 @@ The design follows the same architectural principle used by tools like NAPALM, w
 ```bash
 pip install ufaya
 ```
+
+## Usage
+
+```python
+import ufaya
+
+# File mode: parse a saved Junos XML config.
+driver = ufaya.get_firewall_driver(
+    "juniper_srx",
+    config_path="srx-prod.xml",
+)
+rules = driver.get_rules()
+
+# Live mode: SSH to the device. Use as a context manager so a single SSH
+# session is shared across get_rules() and get_nat_rules() (and any future
+# operational reads).
+driver = ufaya.get_firewall_driver(
+    "juniper_srx",
+    host="srx-prod.example.com",
+    username="readonly",
+    password="...",
+)
+with driver:
+    rules = driver.get_rules()
+    nat_rules = driver.get_nat_rules()
+
+# Capability discovery: ask what the driver can do, rather than calling and
+# catching NotImplementedError.
+from ufaya.firewall.base import NatReader, FirewallWriter
+assert isinstance(driver, NatReader)        # supports NAT reads
+assert not isinstance(driver, FirewallWriter)  # read-only
+```
+
+Out-of-tree drivers can register themselves via `ufaya.register_driver(...)` or by declaring a `[project.entry-points."ufaya.drivers"]` entry in their own `pyproject.toml`. See [CONTRIBUTING.md](CONTRIBUTING.md#out-of-tree-drivers).
+
+## JSON Schemas
+
+The `schemas/` directory publishes the canonical contract for each export type:
+
+- [`schemas/firewall_rules.v3.schema.json`](schemas/firewall_rules.v3.schema.json) — `JuniperSRXDriver.export_rules_json()` output.
+- [`schemas/nat_rules.v2.schema.json`](schemas/nat_rules.v2.schema.json) — `JuniperSRXDriver.export_nat_json()` output.
+
+Both are strict (`additionalProperties: false`) Draft 2020-12 schemas. Downstream consumers can use them with any JSON Schema validator. The repo's CI fails any change that violates the contract; see [CONTRIBUTING.md](CONTRIBUTING.md#json-schema-and-snapshot-tests) for the development flow.
 
 ## Contributing
 

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from ufaya.models.firewall_rule import normalize_export_mode
+from ufaya.export import normalize_export_mode
 
 NatType = Literal["source", "destination", "static"]
 NatAction = Literal["translate", "no_translate"]
@@ -57,20 +57,33 @@ class NatMapping(BaseModel):
 
 
 class NatRuleContext(BaseModel):
-    """Context in which a vendor evaluates a NAT rule."""
+    """Context in which a vendor evaluates a NAT rule.
+
+    ``rule_set`` is a Junos grouping concept and may not exist on every
+    vendor; vendors without an analogous concept should leave it ``None``
+    and use ``vendor_context`` for any extra scoping data.
+    """
 
     context_id: str
     nat_type: NatType
     priority_rank: int
     context_order: int
     rulebase: str
-    rule_set: str
+    rule_set: str | None = None
     from_zones: list[str] | None = None
     to_zones: list[str] | None = None
     from_interfaces: list[str] | None = None
     to_interfaces: list[str] | None = None
     from_routing_instances: list[str] | None = None
     to_routing_instances: list[str] | None = None
+    vendor_context: dict[str, Any] = Field(default_factory=dict)
+
+    def dump_for_export(self) -> dict[str, Any]:
+        """Dump the context, omitting None fields and empty ``vendor_context``."""
+        data = self.model_dump(exclude_none=True)
+        if not data.get("vendor_context"):
+            data.pop("vendor_context", None)
+        return data
 
 
 class NatRule(BaseModel):
@@ -120,7 +133,7 @@ class NatRuleRecord(BaseModel):
         if not include_device:
             payload.pop("device", None)
         if include_context:
-            payload["context"] = self.context.model_dump(exclude_none=True)
+            payload["context"] = self.context.dump_for_export()
 
         if export_mode == "minimal":
             conditions = payload.get("conditions", {})

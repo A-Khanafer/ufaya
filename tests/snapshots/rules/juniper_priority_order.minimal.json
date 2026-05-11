@@ -1,0 +1,128 @@
+{
+  "vendor": "juniper_srx",
+  "device": "fw-snapshot",
+  "schema_version": 3,
+  "mode": "minimal",
+  "rule_count": 4,
+  "evaluation_model": {
+    "context_selection_order": [
+      "intra_zone",
+      "inter_zone",
+      "global",
+      "implicit_default_deny"
+    ],
+    "rule_order_within_context": "top_down_first_match",
+    "default_action": "deny"
+  },
+  "contexts": [
+    {
+      "context": {
+        "context_id": "intra_zone:trust",
+        "scope": "intra_zone",
+        "priority_rank": 1,
+        "context_order": 1,
+        "rulebase": "security_policies",
+        "from_zone": "trust",
+        "to_zone": "trust"
+      },
+      "rule_count": 1,
+      "rules": [
+        {
+          "vendor_rule_id": "intra-allow",
+          "name": "intra-allow",
+          "source": [
+            "any"
+          ],
+          "destination": [
+            "any"
+          ],
+          "service": [
+            "any"
+          ],
+          "action": "allow",
+          "enabled": true,
+          "sequence": 1,
+          "hit_count": null
+        }
+      ]
+    },
+    {
+      "context": {
+        "context_id": "inter_zone:trust->dmz",
+        "scope": "inter_zone",
+        "priority_rank": 2,
+        "context_order": 1,
+        "rulebase": "security_policies",
+        "from_zone": "trust",
+        "to_zone": "dmz"
+      },
+      "rule_count": 2,
+      "rules": [
+        {
+          "vendor_rule_id": "inter-allow",
+          "name": "inter-allow",
+          "source": [
+            "any"
+          ],
+          "destination": [
+            "any"
+          ],
+          "service": [
+            "any"
+          ],
+          "action": "allow",
+          "enabled": true,
+          "sequence": 1,
+          "hit_count": null
+        },
+        {
+          "vendor_rule_id": "inter-deny",
+          "name": "inter-deny",
+          "source": [
+            "any"
+          ],
+          "destination": [
+            "any"
+          ],
+          "service": [
+            "any"
+          ],
+          "action": "deny",
+          "enabled": true,
+          "sequence": 2,
+          "hit_count": null
+        }
+      ]
+    },
+    {
+      "context": {
+        "context_id": "global",
+        "scope": "global",
+        "priority_rank": 3,
+        "context_order": 1,
+        "rulebase": "security_policies",
+        "section": "global"
+      },
+      "rule_count": 1,
+      "rules": [
+        {
+          "vendor_rule_id": "global-deny",
+          "name": "global-deny",
+          "source": [
+            "any"
+          ],
+          "destination": [
+            "any"
+          ],
+          "service": [
+            "any"
+          ],
+          "action": "deny",
+          "enabled": true,
+          "sequence": 1,
+          "hit_count": null
+        }
+      ]
+    }
+  ]
+}

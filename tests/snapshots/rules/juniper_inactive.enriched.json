@@ -1,0 +1,97 @@
+{
+  "vendor": "juniper_srx",
+  "device": "fw-snapshot",
+  "schema_version": 3,
+  "mode": "enriched",
+  "rule_count": 2,
+  "evaluation_model": {
+    "context_selection_order": [
+      "intra_zone",
+      "inter_zone",
+      "global",
+      "implicit_default_deny"
+    ],
+    "rule_order_within_context": "top_down_first_match",
+    "default_action": "deny"
+  },
+  "contexts": [
+    {
+      "context": {
+        "context_id": "inter_zone:trust->untrust",
+        "scope": "inter_zone",
+        "priority_rank": 2,
+        "context_order": 1,
+        "rulebase": "security_policies",
+        "from_zone": "trust",
+        "to_zone": "untrust"
+      },
+      "rule_count": 2,
+      "rules": [
+        {
+          "vendor_rule_id": "active-rule",
+          "name": "active-rule",
+          "source": [
+            "10.0.0.1/32"
+          ],
+          "destination": [
+            "any"
+          ],
+          "service": [
+            "any"
+          ],
+          "action": "allow",
+          "enabled": true,
+          "sequence": 1,
+          "hit_count": null,
+          "source_refs": [
+            "host-a"
+          ],
+          "destination_refs": [
+            "any"
+          ],
+          "service_refs": [
+            "any"
+          ],
+          "service_details": [
+            {
+              "label": "any",
+              "resolved": true
+            }
+          ]
+        },
+        {
+          "vendor_rule_id": "disabled-rule",
+          "name": "disabled-rule",
+          "source": [
+            "any"
+          ],
+          "destination": [
+            "any"
+          ],
+          "service": [
+            "any"
+          ],
+          "action": "deny",
+          "enabled": false,
+          "sequence": 2,
+          "hit_count": null,
+          "source_refs": [
+            "any"
+          ],
+          "destination_refs": [
+            "any"
+          ],
+          "service_refs": [
+            "any"
+          ],
+          "service_details": [
+            {
+              "label": "any",
+              "resolved": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

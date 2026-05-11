@@ -1,16 +1,10 @@
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-ExportMode = Literal["minimal", "enriched", "debug"]
-VALID_EXPORT_MODES: tuple[ExportMode, ...] = ("minimal", "enriched", "debug")
-_EXPORT_MODE_LOOKUP: dict[str, ExportMode] = {
-    "minimal": "minimal",
-    "enriched": "enriched",
-    "debug": "debug",
-}
+from ufaya.export import normalize_export_mode
 
 
 class ServiceDetail(BaseModel):
@@ -31,7 +25,12 @@ class ServiceDetail(BaseModel):
 
 
 class RuleContext(BaseModel):
-    """Context in which a vendor evaluates a firewall rule."""
+    """Context in which a vendor evaluates a firewall rule.
+
+    Vendor-specific scoping concepts (e.g. Palo Alto ``vsys``, Fortinet
+    ``vdom``, Cisco FMC ``package``) belong in ``vendor_context`` rather
+    than as enumerated fields on the shared model.
+    """
 
     context_id: str
     scope: str
@@ -41,9 +40,14 @@ class RuleContext(BaseModel):
     section: str | None = None
     from_zone: str | None = None
     to_zone: str | None = None
-    package: str | None = None
-    vsys: str | None = None
-    vdom: str | None = None
+    vendor_context: dict[str, Any] = Field(default_factory=dict)
+
+    def dump_for_export(self) -> dict[str, Any]:
+        """Dump the context, omitting None fields and empty ``vendor_context``."""
+        data = self.model_dump(exclude_none=True)
+        if not data.get("vendor_context"):
+            data.pop("vendor_context", None)
+        return data
 
 
 class FirewallRule(BaseModel):
@@ -106,7 +110,7 @@ class FirewallRuleRecord(BaseModel):
         if not include_device:
             payload.pop("device", None)
         if include_context:
-            payload["context"] = self.context.model_dump(exclude_none=True)
+            payload["context"] = self.context.dump_for_export()
 
         if export_mode in {"enriched", "debug"} and self.trace is not None:
             payload.update(self.trace.model_dump(exclude_none=True))
@@ -114,14 +118,3 @@ class FirewallRuleRecord(BaseModel):
             payload.update(self.debug.model_dump(exclude_none=True))
 
         return payload
-
-
-def normalize_export_mode(mode: str) -> ExportMode:
-    """Validate and normalize an export mode string."""
-    export_mode = _EXPORT_MODE_LOOKUP.get(mode)
-    if export_mode is None:
-        supported = ", ".join(VALID_EXPORT_MODES)
-        raise ValueError(
-            f"Unsupported export mode '{mode}'. Choose from: {supported}"
-        )
-    return export_mode

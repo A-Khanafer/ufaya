@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+This is a breaking refactor of the public driver interface. The library is still pre-1.0, so back-compat aliases were not added; downstream code that used `FirewallDriver`, the skeleton drivers, or the removed `RuleContext.{package,vsys,vdom}` fields must be updated.
+
+### Changed
+
+- **Driver interface split.** The single `FirewallDriver` ABC has been replaced with three composable capability ABCs: `FirewallReader` (mandatory — security-policy reads, plus the connection-lifecycle protocol), `NatReader` (optional — NAT reads), and `FirewallWriter` (optional — `create_rule`/`delete_rule`/`commit`). Drivers implement only the capabilities they actually provide. Use `isinstance(driver, NatReader)` to ask "does this driver support NAT?" rather than calling and catching `NotImplementedError`.
+- **Connection lifecycle.** `JuniperSRXDriver` now supports the context-manager protocol via `open()`/`close()`/`__enter__`/`__exit__` (inherited from `FirewallReader`). Wrapping calls in `with driver:` reuses one SSH session across `get_rules()`, `get_nat_rules()`, and any future operations. Bare calls outside a `with` block continue to work — they auto-open and auto-close a single-call session.
+- **Pluggable factory.** `get_firewall_driver()` now lazy-imports drivers via `"module.path:ClassName"` specs instead of eagerly importing every vendor. Out-of-tree drivers can register themselves at runtime with `ufaya.register_driver()`, or via the `ufaya.drivers` entry-point group in their `pyproject.toml`. Built-in drivers are no longer re-exported from `ufaya.drivers`.
+- **`NatRuleContext.rule_set`** is now optional (`str | None`). The "rule-set" concept is Junos-specific; vendors without an analog can leave it `None`.
+- **Export I/O extracted.** `JuniperSRXDriver.export_rules_json()` and `export_nat_json()` now delegate atomic JSON writes and payload assembly to a new `ufaya.export` module so future drivers reuse the same shape. Public method signatures and on-disk JSON shape are unchanged — the `RuleContext` field removals do not affect output, since those fields were always `None` and already omitted via `exclude_none=True`.
+
+### Added
+
+- `ufaya.FirewallReader`, `ufaya.NatReader`, `ufaya.FirewallWriter` capability ABCs.
+- `ufaya.register_driver(vendor, driver)`, `ufaya.unregister_driver(vendor)`, and `ufaya.available_vendors()` for runtime driver registration and discovery.
+- Entry-point discovery: third-party packages can ship a driver and register it via `[project.entry-points."ufaya.drivers"]` without monkey-patching.
+- `RuleContext.vendor_context: dict[str, Any]` and `NatRuleContext.vendor_context: dict[str, Any]` escape hatches for vendor-specific scoping data that does not belong on the shared model.
+- `RuleContext.dump_for_export()` and `NatRuleContext.dump_for_export()` helpers that omit `None` fields and the empty `vendor_context` default before serialization.
+- `ufaya.export` module: `write_json_atomic`, `build_rules_payload`, `build_nat_payload`, `normalize_export_mode`. Drivers reuse these instead of reimplementing the tempfile + `os.replace` dance per vendor.
+- Public JSON Schemas: `schemas/firewall_rules.v3.schema.json` and `schemas/nat_rules.v2.schema.json`. Strict (`additionalProperties: false`) Draft 2020-12 contracts intended for downstream consumers.
+- Schema validation tests (`tests/test_export_schema.py`): every fixture × export mode is validated against the published schema.
+- Snapshot regression tests (`tests/test_export_snapshots.py`): every fixture × export mode is diffed against committed `tests/snapshots/{rules,nat}/{fixture}.{mode}.json` golden files. Run `UPDATE_SNAPSHOTS=1 pytest tests/test_export_snapshots.py` to regenerate after intentional output changes.
+- Lifecycle tests verifying that `with driver:` reuses one Netmiko session across multiple calls, and that bare calls auto-open/close a single-call session.
+- Top-level `Makefile` with `check`, `lint`, `type`, `test`, `snapshots`, `schema`, `update-snapshots`, `build`, `smoke`, and `clean` targets.
+- `jsonschema>=4.0` added to the `dev` extra.
+
+### Removed
+
+- `ufaya.FirewallDriver` ABC. Drivers must inherit from one or more of the new capability ABCs instead.
+- `RuleContext.package`, `RuleContext.vsys`, `RuleContext.vdom`. These were Cisco FMC, Palo Alto, and Fortinet concepts pre-baked into the shared model and were always `None` in practice. Use `vendor_context` for vendor-specific scoping data.
+- Skeleton drivers `PaloAltoDriver`, `CiscoDriver`, `FortinetDriver` and the `tests/test_drivers.py` module. They returned empty rule lists and accepted writes as silent no-ops, which was indistinguishable from a real device with no rules. Vendor support for these platforms is now listed as "Planned" in the README.
+- `JuniperSRXDriver.create_rule()`, `delete_rule()`, and `commit()`. The driver no longer implements `FirewallWriter`, so these methods do not exist (rather than raising `NotImplementedError`).
+- The `ufaya.firewall.get_rules(vendor, **kwargs)` convenience wrapper. It bypassed the new context-manager idiom and added little value; use `ufaya.get_firewall_driver(vendor, **kwargs)` directly.
+- Eager driver imports from `src/ufaya/drivers/__init__.py`. Import drivers directly from their package (e.g. `from ufaya.drivers.juniper import JuniperSRXDriver`) or look them up via the factory.
+
 ## [0.6.3]
 
 ### Fixed
@@ -166,7 +202,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `get_firewall_driver()` factory for vendor-based driver selection.
 - PEP 561 typing marker, test suite, and CI/dev tooling configuration.
 
-[Unreleased]: https://github.com/A-Khanafer/ufaya/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/A-Khanafer/ufaya/compare/v0.6.3...HEAD
+[0.6.3]: https://github.com/A-Khanafer/ufaya/compare/v0.6.2...v0.6.3
+[0.6.2]: https://github.com/A-Khanafer/ufaya/compare/v0.6.1...v0.6.2
+[0.6.1]: https://github.com/A-Khanafer/ufaya/compare/v0.6.0...v0.6.1
+[0.6.0]: https://github.com/A-Khanafer/ufaya/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/A-Khanafer/ufaya/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/A-Khanafer/ufaya/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/A-Khanafer/ufaya/compare/v0.3.0...v0.4.0
