@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Release documentation now covers trusted publisher setup, tag-triggered PyPI
+  publishing, local release checks, verification, and failed release handling.
 - `make check` and CI now check Python formatting alongside lint, types, and tests.
 - Existing Python files formatted with Ruff to establish a passing baseline.
 
