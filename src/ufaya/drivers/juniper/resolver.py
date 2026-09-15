@@ -174,9 +174,7 @@ class Resolver:
             sets[set_name] = members
         return addrs, sets
 
-    def resolve_addresses(
-        self, names: list[str], zones: list[str]
-    ) -> list[str]:
+    def resolve_addresses(self, names: list[str], zones: list[str]) -> list[str]:
         """Resolve address names to concrete values.
 
         Falls back from zone books → global → keeps vendor name.
@@ -190,9 +188,7 @@ class Resolver:
             resolved.extend(expanded)
         return resolved
 
-    def _expand_address(
-        self, name: str, zones: list[str], seen: set[str]
-    ) -> list[str]:
+    def _expand_address(self, name: str, zones: list[str], seen: set[str]) -> list[str]:
         if name in seen:
             return [name]
         seen = seen | {name}
@@ -200,10 +196,7 @@ class Resolver:
         for z in zones:
             if z in self._zone_addresses and name in self._zone_addresses[z]:
                 return self._zone_addresses[z][name]
-            if (
-                z in self._zone_address_sets
-                and name in self._zone_address_sets[z]
-            ):
+            if z in self._zone_address_sets and name in self._zone_address_sets[z]:
                 out: list[str] = []
                 for member in self._zone_address_sets[z][name]:
                     out.extend(self._expand_address(member, zones, seen))

@@ -212,9 +212,7 @@ class TestConstructorValidation:
             JuniperSRXDriver(host="1.2.3.4", username="admin", password="")
 
     def test_live_mode_accepted(self):
-        d = JuniperSRXDriver(
-            host="1.2.3.4", username="admin", password="secret"
-        )
+        d = JuniperSRXDriver(host="1.2.3.4", username="admin", password="secret")
         assert d._mode == "live"
         assert d._device_name == "1.2.3.4"
 
@@ -505,8 +503,7 @@ class TestStructuredServiceResolution:
         traceroute_details = [
             detail
             for detail in record.trace.service_details
-            if detail.protocol == "udp"
-            and detail.destination_ports == ["33434-33534"]
+            if detail.protocol == "udp" and detail.destination_ports == ["33434-33534"]
         ]
         assert len(traceroute_details) == 1
 
@@ -1060,9 +1057,7 @@ class TestJSONExport:
             None,
         ]
 
-    def test_live_export_falls_back_when_hit_count_xml_is_unparseable(
-        self, tmp_path
-    ):
+    def test_live_export_falls_back_when_hit_count_xml_is_unparseable(self, tmp_path):
         config_xml = _fixture("juniper_actions.xml").read_text()
         mock_conn = MagicMock()
         mock_conn.send_command.side_effect = [

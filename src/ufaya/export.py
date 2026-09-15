@@ -37,9 +37,7 @@ def normalize_export_mode(mode: str) -> ExportMode:
     export_mode = _EXPORT_MODE_LOOKUP.get(mode)
     if export_mode is None:
         supported = ", ".join(VALID_EXPORT_MODES)
-        raise ValueError(
-            f"Unsupported export mode '{mode}'. Choose from: {supported}"
-        )
+        raise ValueError(f"Unsupported export mode '{mode}'. Choose from: {supported}")
     return export_mode
 
 

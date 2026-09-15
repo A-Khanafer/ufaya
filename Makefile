@@ -1,6 +1,9 @@
 # UFAYA developer gauntlet.
 #
 # Quick start:
+#   make check-fast         # lint + formatting + types before committing
+#   make fix                # apply safe lint fixes and format Python files
+#   make install-hooks      # opt in to automatic checks on every commit
 #   make check              # everything you should run before pushing
 #   make update-snapshots   # regenerate JSON snapshot fixtures (review before commit)
 #   make build              # produce a wheel + sdist and inspect them
@@ -14,12 +17,15 @@ PIP       := .venv/bin/pip
 PYTEST    := .venv/bin/pytest
 RUFF      := .venv/bin/ruff
 MYPY      := .venv/bin/mypy
+PRE_COMMIT := .venv/bin/pre-commit
 
-.PHONY: check lint format type test snapshots schema update-snapshots build smoke clean
+.PHONY: check check-fast lint format format-check fix type install-hooks test snapshots schema update-snapshots build smoke clean
 
-# ---- Pre-push gauntlet -------------------------------------------------------
+# ---- Local checks -----------------------------------------------------------
 
-check: lint type test  ## Run before every push.
+check: check-fast test  ## Run before every push.
+
+check-fast: lint format-check type  ## Run before every commit; does not edit files.
 
 lint:
 	$(RUFF) check src/ tests/
@@ -27,8 +33,18 @@ lint:
 format:
 	$(RUFF) format src/ tests/
 
+format-check:
+	$(RUFF) format --check src/ tests/
+
+fix:
+	$(RUFF) check --fix src/ tests/
+	$(RUFF) format src/ tests/
+
 type:
 	$(MYPY) src/
+
+install-hooks:
+	$(PRE_COMMIT) install
 
 test:
 	$(PYTEST) -q

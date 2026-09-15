@@ -1,0 +1,23 @@
+# Reuse the project's .venv and Makefile so mypy sees the installed dependencies.
+# Check the whole project, including when only configuration files are staged.
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: Lint (ruff)
+        entry: make lint
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: ruff-format
+        name: Format check (ruff)
+        entry: make format-check
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: mypy
+        name: Type-check (mypy)
+        entry: make type
+        language: system
+        pass_filenames: false
+        always_run: true

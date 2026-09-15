@@ -165,9 +165,7 @@ class JuniperSRXDriver(FirewallReader, NatReader):
 
         if live:
             if not username or not password:
-                raise ValueError(
-                    "Live mode requires host, username, and password."
-                )
+                raise ValueError("Live mode requires host, username, and password.")
             self._mode = "live"
             self._host = host
             self._username = username
@@ -194,7 +192,7 @@ class JuniperSRXDriver(FirewallReader, NatReader):
             return
 
         try:
-            from netmiko import ConnectHandler  # type: ignore[import-untyped]
+            from netmiko import ConnectHandler
         except ImportError as exc:
             raise ImportError(
                 "netmiko is required for live mode. "
@@ -278,9 +276,7 @@ class JuniperSRXDriver(FirewallReader, NatReader):
 
     # -- JSON export (Juniper-specific) ------------------------------------
 
-    def export_rules_json(
-        self, output_dir: str | Path, mode: str = "enriched"
-    ) -> Path:
+    def export_rules_json(self, output_dir: str | Path, mode: str = "enriched") -> Path:
         """Export parsed rules to a deterministic JSON file.
 
         Parameters
@@ -326,9 +322,7 @@ class JuniperSRXDriver(FirewallReader, NatReader):
         target = out / f"{safe_name}.firewall_rules.json"
         return write_json_atomic(payload, target, prefix=f".{safe_name}_")
 
-    def export_nat_json(
-        self, output_dir: str | Path, mode: str = "enriched"
-    ) -> Path:
+    def export_nat_json(self, output_dir: str | Path, mode: str = "enriched") -> Path:
         """Export parsed NAT rules to a deterministic JSON file."""
         export_mode = normalize_export_mode(mode)
         out = self._prepare_output_dir(output_dir, "export_nat_json")
@@ -371,9 +365,7 @@ class JuniperSRXDriver(FirewallReader, NatReader):
     def _prepare_output_dir(output_dir: str | Path, caller: str) -> Path:
         out = Path(output_dir)
         if out.exists() and not out.is_dir():
-            raise ValueError(
-                f"{caller}: '{out}' exists and is not a directory."
-            )
+            raise ValueError(f"{caller}: '{out}' exists and is not a directory.")
         out.mkdir(parents=True, exist_ok=True)
         return out
 
@@ -410,9 +402,7 @@ class JuniperSRXDriver(FirewallReader, NatReader):
         try:
             with self._session() as conn:
                 try:
-                    hit_count_output: str | None = conn.send_command(
-                        _HIT_COUNT_COMMAND
-                    )
+                    hit_count_output: str | None = conn.send_command(_HIT_COUNT_COMMAND)
                 except Exception:
                     hit_count_output = None
                 config_output: str = conn.send_command(_CONFIG_COMMAND)
@@ -432,18 +422,12 @@ class JuniperSRXDriver(FirewallReader, NatReader):
             hit_count_root = self._parse_xml(
                 hit_count_output, unwrap_configuration=False
             )
-            hit_count_lookup, parsed = self._parse_hit_count_lookup(
-                hit_count_root
-            )
+            hit_count_lookup, parsed = self._parse_hit_count_lookup(hit_count_root)
         except ValueError:
-            hit_count_lookup, parsed = self._parse_hit_count_text(
-                hit_count_output
-            )
+            hit_count_lookup, parsed = self._parse_hit_count_text(hit_count_output)
 
         if not parsed:
-            hit_count_lookup, parsed = self._parse_hit_count_text(
-                hit_count_output
-            )
+            hit_count_lookup, parsed = self._parse_hit_count_text(hit_count_output)
 
         if not parsed:
             return config_output, {}, None
@@ -456,21 +440,16 @@ class JuniperSRXDriver(FirewallReader, NatReader):
             return self._config_path.read_text(encoding="utf-8")
         except OSError as exc:
             raise OSError(
-                f"Failed to read configuration file "
-                f"'{self._config_path}': {exc}"
+                f"Failed to read configuration file '{self._config_path}': {exc}"
             ) from exc
 
     @staticmethod
-    def _parse_xml(
-        xml_str: str, *, unwrap_configuration: bool
-    ) -> ET.Element:
+    def _parse_xml(xml_str: str, *, unwrap_configuration: bool) -> ET.Element:
         """Parse XML and optionally unwrap ``<configuration>`` from ``<rpc-reply>``."""
         try:
             root = ET.fromstring(xml_str)
         except ET.ParseError as exc:
-            raise ValueError(
-                f"Malformed XML configuration: {exc}"
-            ) from exc
+            raise ValueError(f"Malformed XML configuration: {exc}") from exc
 
         if not unwrap_configuration:
             return root
@@ -482,8 +461,7 @@ class JuniperSRXDriver(FirewallReader, NatReader):
             cfg = find(root, "configuration")
             if cfg is None:
                 raise ValueError(
-                    "XML contains <rpc-reply> but no "
-                    "<configuration> element."
+                    "XML contains <rpc-reply> but no <configuration> element."
                 )
             return cfg
 
@@ -597,15 +575,11 @@ class JuniperSRXDriver(FirewallReader, NatReader):
     ) -> FirewallRuleRecord:
         name = text(find(policy, "name")) or f"policy-{sequence}"
         description = text(find(policy, "description"))
-        hit_count = hit_count_lookup.get(
-            self._policy_hit_count_key(context, name)
-        )
+        hit_count = hit_count_lookup.get(self._policy_hit_count_key(context, name))
 
         enabled = True
         inactive_attr = policy.attrib.get("inactive", "")
-        junos_inactive = policy.attrib.get(
-            f"{{{JUNOS_NS}}}inactive", ""
-        )
+        junos_inactive = policy.attrib.get(f"{{{JUNOS_NS}}}inactive", "")
         if inactive_attr.lower() == "inactive" or junos_inactive:
             enabled = False
 
@@ -874,23 +848,15 @@ class JuniperSRXDriver(FirewallReader, NatReader):
             explicit_protocols = cls._collect_texts(match, "protocol")
             applications = cls._collect_texts(match, "application")
             explicit_source_ports = cls._collect_texts(match, "source-port")
-            explicit_destination_ports = cls._collect_texts(
-                match, "destination-port"
-            )
+            explicit_destination_ports = cls._collect_texts(match, "destination-port")
 
         (
             application_protocols,
             application_source_ports,
             application_destination_ports,
-        ) = cls._resolve_nat_application_match(
-            resolver, applications
-        )
-        protocols = cls._dedupe(
-            [*explicit_protocols, *application_protocols]
-        )
-        source_ports = cls._dedupe(
-            [*explicit_source_ports, *application_source_ports]
-        )
+        ) = cls._resolve_nat_application_match(resolver, applications)
+        protocols = cls._dedupe([*explicit_protocols, *application_protocols])
+        source_ports = cls._dedupe([*explicit_source_ports, *application_source_ports])
         destination_ports = cls._dedupe(
             [*explicit_destination_ports, *application_destination_ports]
         )
@@ -1017,13 +983,9 @@ class JuniperSRXDriver(FirewallReader, NatReader):
             return "no_translate", None
 
         if context.nat_type == "source":
-            return self._build_source_nat_mapping(
-                then, conditions, pool_inventory
-            )
+            return self._build_source_nat_mapping(then, conditions, pool_inventory)
         if context.nat_type == "destination":
-            return self._build_destination_nat_mapping(
-                then, conditions, pool_inventory
-            )
+            return self._build_destination_nat_mapping(then, conditions, pool_inventory)
         return self._build_static_nat_mapping(
             then, resolver, conditions, source_zones, destination_zones
         )
@@ -1152,18 +1114,14 @@ class JuniperSRXDriver(FirewallReader, NatReader):
         translation_ref: str | None = None
         translated_addresses: list[str] | None = None
         resolution_status: ResolutionStatus = "resolved"
-        translation_zones = self._dedupe(
-            [*source_zones, *destination_zones]
-        )
+        translation_zones = self._dedupe([*source_zones, *destination_zones])
 
         if prefix_name is not None:
             if "/" in prefix_name:
                 translated_addresses = [prefix_name]
             else:
                 translation_ref = prefix_name
-                resolved = resolver.resolve_addresses(
-                    [prefix_name], translation_zones
-                )
+                resolved = resolver.resolve_addresses([prefix_name], translation_zones)
                 if resolved and resolved != [prefix_name]:
                     translated_addresses = resolved
                 else:
@@ -1177,9 +1135,7 @@ class JuniperSRXDriver(FirewallReader, NatReader):
         fwd_original = NatMappingSide(
             field="destination",
             addresses=(
-                conditions.destination
-                if conditions.destination != ["any"]
-                else None
+                conditions.destination if conditions.destination != ["any"] else None
             ),
         )
         fwd_translated = NatMappingSide(
@@ -1208,9 +1164,7 @@ class JuniperSRXDriver(FirewallReader, NatReader):
         rev_translated = NatMappingSide(
             field="source",
             addresses=(
-                conditions.destination
-                if conditions.destination != ["any"]
-                else None
+                conditions.destination if conditions.destination != ["any"] else None
             ),
         )
         reverse = NatRewrite(
@@ -1267,9 +1221,7 @@ class JuniperSRXDriver(FirewallReader, NatReader):
                 "routing_instance": pool.get("routing_instance"),
             }
             cleaned = {
-                field: value
-                for field, value in payload.items()
-                if value is not None
+                field: value for field, value in payload.items() if value is not None
             }
             if mode == "debug":
                 cleaned["raw"] = pool["raw"]
@@ -1303,9 +1255,7 @@ class JuniperSRXDriver(FirewallReader, NatReader):
     def _collect_nat_pool_addresses(cls, pool: ET.Element) -> list[str]:
         addresses = cls._collect_texts(pool, "address")
 
-        host_address_base = cls._first_text(
-            pool, "host-address-base", recursive=False
-        )
+        host_address_base = cls._first_text(pool, "host-address-base", recursive=False)
         host_address_limit = cls._first_text(
             pool,
             "host-address-limit",
@@ -1315,9 +1265,7 @@ class JuniperSRXDriver(FirewallReader, NatReader):
         if host_address_base:
             if host_address_limit:
                 addresses.append(
-                    cls._format_nat_pool_range(
-                        host_address_base, host_address_limit
-                    )
+                    cls._format_nat_pool_range(host_address_base, host_address_limit)
                 )
             else:
                 addresses.append(host_address_base)
@@ -1335,9 +1283,7 @@ class JuniperSRXDriver(FirewallReader, NatReader):
         return cls._dedupe(addresses)
 
     @classmethod
-    def _extract_nat_pool_range(
-        cls, element: ET.Element
-    ) -> str | None:
+    def _extract_nat_pool_range(cls, element: ET.Element) -> str | None:
         lower = cls._first_text(
             element,
             "low",
@@ -1611,9 +1557,7 @@ class JuniperSRXDriver(FirewallReader, NatReader):
         return key, count
 
     @staticmethod
-    def _is_global_policy(
-        from_zone: str | None, to_zone: str | None
-    ) -> bool:
+    def _is_global_policy(from_zone: str | None, to_zone: str | None) -> bool:
         if from_zone is None and to_zone is None:
             return True
         if from_zone is None or to_zone is None:

@@ -63,9 +63,7 @@ def get_firewall_driver(vendor: str, **kwargs: Any) -> FirewallReader:
     spec = _resolve(vendor)
     if spec is None:
         supported = ", ".join(available_vendors()) or "(none)"
-        raise ValueError(
-            f"Unsupported vendor '{vendor}'. Choose from: {supported}"
-        )
+        raise ValueError(f"Unsupported vendor '{vendor}'. Choose from: {supported}")
 
     cls = _load_class(spec)
     return cls(**kwargs)
@@ -96,7 +94,5 @@ def _load_class(spec: DriverSpec) -> type[FirewallReader]:
 
 def _validate_driver_class(obj: Any) -> type[FirewallReader]:
     if not isinstance(obj, type) or not issubclass(obj, FirewallReader):
-        raise TypeError(
-            f"Registered driver {obj!r} is not a FirewallReader subclass."
-        )
+        raise TypeError(f"Registered driver {obj!r} is not a FirewallReader subclass.")
     return obj

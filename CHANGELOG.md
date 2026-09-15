@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `make check-fast` for lint, formatting, and type checks before commits;
+  `make format-check` for non-mutating formatting checks; and `make fix` for
+  safe lint fixes followed by formatting.
+- Optional pre-commit hooks, installed with `make install-hooks`, that reuse
+  the project's development environment and Makefile checks.
+
+### Changed
+
+- `make check` and CI now check Python formatting alongside lint, types, and tests.
+- Existing Python files formatted with Ruff to establish a passing baseline.
+
+### Fixed
+
+- Netmiko import typing configuration supports both older untyped releases and
+  newer typed releases without an unused-ignore error.
+
 ## [0.7.0] - 2026-05-11
 
 This is a breaking refactor of the public driver interface. The library is still pre-1.0, so back-compat aliases were not added; downstream code that used `FirewallDriver`, the skeleton drivers, or the removed `RuleContext.{package,vsys,vdom}` fields must be updated.

@@ -242,9 +242,7 @@ class TestNatExtraction:
             "destination": ["any"],
             "source_refs": ["client-net"],
         }
-        assert rule_map["snat-app"].rule.conditions.model_dump(
-            exclude_none=True
-        ) == {
+        assert rule_map["snat-app"].rule.conditions.model_dump(exclude_none=True) == {
             "source": ["10.0.0.0/24"],
             "destination": ["any"],
             "destination_ports": ["8080"],
@@ -252,9 +250,7 @@ class TestNatExtraction:
             "applications": ["tcp-8080"],
             "source_refs": ["client-net"],
         }
-        assert rule_map["snat-mixed"].rule.conditions.model_dump(
-            exclude_none=True
-        ) == {
+        assert rule_map["snat-mixed"].rule.conditions.model_dump(exclude_none=True) == {
             "source": ["any"],
             "destination": ["172.16.0.0/24"],
             "source_ports": ["1024-65535"],
@@ -370,9 +366,7 @@ class TestNatJSONExport:
             "snat-off",
         ]
 
-    def test_enriched_mode_includes_mapping_and_supporting_objects(
-        self, tmp_path
-    ):
+    def test_enriched_mode_includes_mapping_and_supporting_objects(self, tmp_path):
         driver = JuniperSRXDriver(
             config_path=_fixture("juniper_nat.xml"),
             device_name="srx-test",
@@ -442,9 +436,7 @@ class TestNatJSONExport:
         assert mapping["reverse"]["original"]["field"] == "source"
         assert mapping["reverse"]["translated"]["field"] == "source"
 
-    def test_export_resolves_application_matches_and_pool_ranges(
-        self, tmp_path
-    ):
+    def test_export_resolves_application_matches_and_pool_ranges(self, tmp_path):
         driver = JuniperSRXDriver(
             config_path=_fixture("juniper_nat_resolved.xml"),
             device_name="srx-test",
@@ -463,9 +455,7 @@ class TestNatJSONExport:
             "any"
         ]
         assert source_rule_map["snat-app"]["conditions"]["protocols"] == ["tcp"]
-        assert source_rule_map["snat-app"]["conditions"]["applications"] == [
-            "tcp-8080"
-        ]
+        assert source_rule_map["snat-app"]["conditions"]["applications"] == ["tcp-8080"]
         assert source_rule_map["snat-mixed"]["conditions"]["protocols"] == [
             "udp",
             "tcp",
@@ -473,9 +463,7 @@ class TestNatJSONExport:
 
         dnat_rule = data["contexts"][0]["rules"][0]
         dnat_fwd = dnat_rule["mapping"]["forward"]
-        assert dnat_fwd["translated"]["addresses"] == [
-            "10.10.10.10/32-10.10.10.12/32"
-        ]
+        assert dnat_fwd["translated"]["addresses"] == ["10.10.10.10/32-10.10.10.12/32"]
         assert dnat_fwd["translated"]["ports"] == ["8443"]
         assert dnat_fwd["determinism"] == "set_based"
 
@@ -495,9 +483,7 @@ class TestNatJSONExport:
             },
         ]
 
-    def test_minimal_mode_excludes_refs_debug_and_supporting_objects(
-        self, tmp_path
-    ):
+    def test_minimal_mode_excludes_refs_debug_and_supporting_objects(self, tmp_path):
         driver = JuniperSRXDriver(
             config_path=_fixture("juniper_nat.xml"),
             device_name="srx-test",
@@ -640,9 +626,7 @@ class TestNatRealXmlTags:
         static_web = [r for r in records if r.rule.name == "static-web"][0]
 
         assert static_web.rule.conditions.destination == ["198.51.100.200/32"]
-        assert static_web.rule.conditions.destination_refs == [
-            "198.51.100.200/32"
-        ]
+        assert static_web.rule.conditions.destination_refs == ["198.51.100.200/32"]
         assert static_web.rule.mapping.forward.translated.addresses == [
             "10.10.10.10/32"
         ]
