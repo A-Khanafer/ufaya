@@ -67,8 +67,9 @@ update-snapshots:
 
 # ---- Release rehearsal -------------------------------------------------------
 
-# Build the wheel + sdist and validate they're publishable. Run before any
-# `twine upload`. Setuptools-scm picks the version from the most recent git tag.
+# Build the wheel + sdist and validate them before pushing a release tag.
+# Install build and twine in .venv first; see CONTRIBUTING.md#releasing.
+# Setuptools-scm derives the version from Git tags.
 build: clean
 	$(PY) -m build
 	$(PY) -m twine check dist/*
