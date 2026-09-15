@@ -15,11 +15,16 @@ The project targets Python 3.10 through 3.12.
 
 ## Development workflow
 
-The repo ships a `Makefile` that wraps the full pre-push gauntlet:
+The repo ships a `Makefile` that uses the tools installed in `.venv/`; you do not
+need to activate the environment to run these commands:
 
 ```bash
-make check              # lint + types + all tests (~3 seconds)
+make check-fast         # lint + formatting checks + types before committing
+make fix                # apply safe lint fixes, then format Python files
+make check              # check-fast + all tests before pushing
 make lint               # ruff only
+make format-check       # check formatting without changing files
+make format             # apply formatting
 make type               # mypy only
 make test               # pytest only
 make snapshots          # snapshot regression tests only
@@ -27,14 +32,45 @@ make schema             # JSON Schema validation tests only
 make update-snapshots   # regenerate tests/snapshots/ after intentional output changes
 ```
 
-Run `make check` before every push. The CI job runs the same gauntlet, so passing locally means CI will pass too.
+Run `make check-fast` before committing and `make check` before pushing. Both
+commands check files without editing them. If lint or formatting fails, run
+`make fix`, address any remaining errors, review the diff, and rerun the checks.
+CI runs the same lint, formatting, type, and test checks on Python 3.10–3.12.
 
-If `make` is not available on your system, the equivalent commands are:
+If `make` is not available, activate your virtual environment and run:
 
 ```bash
-.venv/bin/ruff check src/ tests/
-.venv/bin/mypy src/
-.venv/bin/pytest -q
+python -m ruff check src/ tests/
+python -m ruff format --check src/ tests/
+python -m mypy src/
+python -m pytest -q
+```
+
+The first three commands are equivalent to `make check-fast`; add pytest for
+the full `make check` suite.
+
+### Optional commit hooks
+
+To run lint, formatting, and type checks automatically on each commit, install
+the [pre-commit](https://pre-commit.com/) hooks once per clone:
+
+```bash
+.venv/bin/python -m pip install -e ".[dev]"  # refresh existing environments
+make install-hooks
+```
+
+The hooks require `make` and the project's `.venv/`. They reuse the Makefile
+targets and check all of `src/` and `tests/` (types cover `src/` only), including
+commits that change configuration rather than Python files. Checks do not edit
+files. When a commit fails, run `make fix` or correct the reported errors,
+review and stage the changes, then retry the commit. Tests remain part of
+`make check` and CI.
+
+Run the hooks manually or remove them with:
+
+```bash
+.venv/bin/pre-commit run --all-files
+.venv/bin/pre-commit uninstall
 ```
 
 ## JSON Schema and snapshot tests

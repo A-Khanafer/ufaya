@@ -30,15 +30,11 @@ from tests._snapshot import assert_matches_snapshot
 @pytest.mark.parametrize("mode", EXPORT_MODES)
 def test_rules_export_snapshot(fixture: str, mode: str):
     payload = export_rules(fixture, mode)
-    assert_matches_snapshot(
-        payload, SNAPSHOTS_DIR / "rules" / f"{fixture}.{mode}.json"
-    )
+    assert_matches_snapshot(payload, SNAPSHOTS_DIR / "rules" / f"{fixture}.{mode}.json")
 
 
 @pytest.mark.parametrize("fixture", ALL_FIXTURES)
 @pytest.mark.parametrize("mode", EXPORT_MODES)
 def test_nat_export_snapshot(fixture: str, mode: str):
     payload = export_nat(fixture, mode)
-    assert_matches_snapshot(
-        payload, SNAPSHOTS_DIR / "nat" / f"{fixture}.{mode}.json"
-    )
+    assert_matches_snapshot(payload, SNAPSHOTS_DIR / "nat" / f"{fixture}.{mode}.json")

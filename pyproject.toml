@@ -42,6 +42,7 @@ dev = [
     "pytest-cov",
     "ruff",
     "mypy",
+    "pre-commit>=3.5",
     "types-requests",
     "jsonschema>=4.0",
 ]
@@ -72,3 +73,8 @@ version_file = "src/ufaya/_version.py"
 python_version = "3.10"
 strict = true
 warn_return_any = true
+
+# Older supported Netmiko releases do not ship type information.
+[[tool.mypy.overrides]]
+module = ["netmiko", "netmiko.*"]
+ignore_missing_imports = true

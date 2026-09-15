@@ -81,9 +81,7 @@ def test_register_driver_overrides_built_in():
     finally:
         unregister_driver("juniper_srx")
     # Built-in still works after unregister.
-    d = get_firewall_driver(
-        "juniper_srx", host="1.2.3.4", username="u", password="p"
-    )
+    d = get_firewall_driver("juniper_srx", host="1.2.3.4", username="u", password="p")
     assert isinstance(d, JuniperSRXDriver)
 
 
