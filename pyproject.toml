@@ -36,6 +36,9 @@ Repository = "https://github.com/A-Khanafer/ufaya"
 Issues = "https://github.com/A-Khanafer/ufaya/issues"
 Changelog = "https://github.com/A-Khanafer/ufaya/blob/main/CHANGELOG.md"
 
+[project.scripts]
+ufaya = "ufaya.cli:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",

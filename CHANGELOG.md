@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A dependency-free `ufaya` command-line interface with `export rules` and
+  `export nat` commands for offline configuration files. Both commands support
+  the `minimal`, `enriched`, and `debug` export modes.
 - `make check-fast` for lint, formatting, and type checks before commits;
   `make format-check` for non-mutating formatting checks; and `make fix` for
   safe lint fixes followed by formatting.
