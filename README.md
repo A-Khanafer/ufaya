@@ -61,6 +61,30 @@ Drivers can also be contributed out-of-tree and registered via the
 pip install ufaya
 ```
 
+## Command line
+
+Export security policies or NAT rules directly from a saved Junos XML
+configuration:
+
+```bash
+ufaya export rules \
+  --vendor juniper_srx \
+  --config srx-prod.xml \
+  --out exports/ \
+  --mode enriched
+
+ufaya export nat \
+  --vendor juniper_srx \
+  --config srx-prod.xml \
+  --out exports/ \
+  --mode enriched
+```
+
+`--mode` accepts `minimal`, `enriched`, or `debug` and defaults to `enriched`.
+On success, the command prints the path of the generated JSON file. Invalid
+vendors, missing or malformed configuration files, unsupported capabilities,
+and unwritable output locations produce a concise error and a nonzero exit.
+
 ## Usage
 
 ```python
