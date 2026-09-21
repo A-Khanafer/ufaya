@@ -105,6 +105,7 @@ driver = ufaya.get_firewall_driver(
     host="srx-prod.example.com",
     username="readonly",
     password="...",
+    read_timeout=120,  # Optional per-command timeout in seconds (default: 60).
 )
 with driver:
     rules = driver.get_rules()
@@ -116,6 +117,19 @@ from ufaya.firewall.base import NatReader, FirewallWriter
 assert isinstance(driver, NatReader)        # supports NAT reads
 assert not isinstance(driver, FirewallWriter)  # read-only
 ```
+
+Juniper live reads default to a 60-second timeout per configuration or hit-count
+command. Set `read_timeout` on `JuniperSRXDriver` or through
+`get_firewall_driver()` for slower devices or larger configurations. The value
+must be finite and greater than zero; it does not change SSH connection or
+authentication timeouts and is unused in file mode.
+
+If the hit-count command raises, the driver closes that session and reconnects
+before reading configuration. Successful configuration reads still return rules
+with `hit_count: null` when counters are unavailable. Inside `with driver:`, the
+replacement session is reused until the block exits. Configuration or reconnect
+failures still raise `ConnectionError`; a session whose command read failed is
+closed before another call can reuse it.
 
 Out-of-tree drivers can register themselves via `ufaya.register_driver(...)` or by declaring a `[project.entry-points."ufaya.drivers"]` entry in their own `pyproject.toml`. See [CONTRIBUTING.md](CONTRIBUTING.md#out-of-tree-drivers).
 

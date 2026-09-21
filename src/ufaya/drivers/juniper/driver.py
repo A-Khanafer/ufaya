@@ -15,6 +15,7 @@ top-down rule order within each context) and :meth:`export_rules_json`
 
 from __future__ import annotations
 
+import math
 import re
 import xml.etree.ElementTree as ET
 from collections.abc import Iterator
@@ -130,6 +131,11 @@ class JuniperSRXDriver(FirewallReader, NatReader):
     All modes accept an optional ``device_name`` used in
     :class:`~ufaya.models.firewall_rule.FirewallRule` output and JSON
     filenames (defaults to the host or ``"juniper_srx"``).
+
+    Live command reads use ``read_timeout`` seconds (default: 60) for both
+    configuration and hit-count commands. It must be finite and positive;
+    it does not change SSH connection or authentication timeouts. File mode
+    does not use the timeout.
     """
 
     def __init__(
@@ -140,6 +146,7 @@ class JuniperSRXDriver(FirewallReader, NatReader):
         password: str | None = None,
         config_path: str | Path | None = None,
         device_name: str | None = None,
+        read_timeout: float = 60.0,
     ) -> None:
         live = host is not None
         file_mode = config_path is not None
@@ -157,6 +164,12 @@ class JuniperSRXDriver(FirewallReader, NatReader):
                 "Provide exactly one of: (host, username, password) "
                 "or config_path."
             )
+
+        if not math.isfinite(read_timeout) or read_timeout <= 0:
+            raise ValueError(
+                "read_timeout must be a finite positive number of seconds."
+            )
+        self._read_timeout = read_timeout
 
         self._host: str | None = None
         self._username: str | None = None
@@ -229,18 +242,22 @@ class JuniperSRXDriver(FirewallReader, NatReader):
     def _session(self) -> Iterator[Any]:
         """Yield an active SSH session, auto-opening/closing if needed.
 
-        If the caller has already entered the driver as a context manager,
-        the existing session is reused and not closed on exit. Otherwise a
-        fresh session is opened just for this call.
+        If the caller has already opened the driver, the existing session
+        is reused and kept open after successful reads. Otherwise a fresh
+        session is opened just for this call. A failed read discards the
+        session, since unread output may leave the channel out of sync.
         """
-        if self._conn is not None:
-            yield self._conn
-            return
-        self.open()
+        auto_close = self._conn is None
+        if auto_close:
+            self.open()
         try:
             yield self._conn
-        finally:
+        except Exception:
             self.close()
+            raise
+        finally:
+            if auto_close:
+                self.close()
 
     # -- FirewallReader / NatReader ----------------------------------------
 
@@ -388,7 +405,10 @@ class JuniperSRXDriver(FirewallReader, NatReader):
     def _fetch_config_xml(self) -> str:
         try:
             with self._session() as conn:
-                return cast(str, conn.send_command(_CONFIG_COMMAND))
+                return cast(
+                    str,
+                    conn.send_command(_CONFIG_COMMAND, read_timeout=self._read_timeout),
+                )
         except ConnectionError:
             raise
         except Exception as exc:
@@ -402,10 +422,19 @@ class JuniperSRXDriver(FirewallReader, NatReader):
         try:
             with self._session() as conn:
                 try:
-                    hit_count_output: str | None = conn.send_command(_HIT_COUNT_COMMAND)
+                    hit_count_output: str | None = conn.send_command(
+                        _HIT_COUNT_COMMAND, read_timeout=self._read_timeout
+                    )
                 except Exception:
                     hit_count_output = None
-                config_output: str = conn.send_command(_CONFIG_COMMAND)
+                    # Output may still be arriving after a timeout. A new
+                    # session avoids mixing it with the configuration XML.
+                    self.close()
+                    self.open()
+                    conn = self._conn
+                config_output: str = conn.send_command(
+                    _CONFIG_COMMAND, read_timeout=self._read_timeout
+                )
         except ConnectionError:
             raise
         except Exception as exc:

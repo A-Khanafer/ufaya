@@ -24,6 +24,9 @@ The main methods are:
 
 - `_fetch_live_data()`
   - Runs the live operational hit-count command.
+  - Applies the driver's `read_timeout` (60 seconds by default) to both commands.
+  - If the hit-count command raises, closes the failed SSH session and opens a
+    fresh one before fetching configuration; rules retain null hit counts.
   - Runs the configuration command.
   - Returns config XML plus a hit-count lookup.
 - `_parse_hit_count_lookup()`

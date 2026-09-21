@@ -668,8 +668,11 @@ class TestLiveFetch:
             password="secret",
         )
         assert mock_conn.send_command.call_args_list == [
-            call("show security policies hit-count | display xml | no-more"),
-            call("show configuration | display xml | no-more"),
+            call(
+                "show security policies hit-count | display xml | no-more",
+                read_timeout=60.0,
+            ),
+            call("show configuration | display xml | no-more", read_timeout=60.0),
         ]
         assert len(records) == 3
         assert [record.rule.hit_count for record in records] == [5, 6, 7]
@@ -1029,13 +1032,13 @@ class TestJSONExport:
     def test_live_export_falls_back_when_hit_count_fetch_fails(self, tmp_path):
         config_xml = _fixture("juniper_actions.xml").read_text()
         mock_conn = MagicMock()
-        mock_conn.send_command.side_effect = [
-            RuntimeError("hit count RPC unavailable"),
-            config_xml,
-        ]
+        mock_conn.send_command.side_effect = RuntimeError("hit count RPC unavailable")
         mock_conn.__enter__ = MagicMock(return_value=mock_conn)
         mock_conn.__exit__ = MagicMock(return_value=False)
-        mock_handler_cls = MagicMock(return_value=mock_conn)
+        recovered_conn = MagicMock()
+        recovered_conn.__enter__.return_value = recovered_conn
+        recovered_conn.send_command.return_value = config_xml
+        mock_handler_cls = MagicMock(side_effect=[mock_conn, recovered_conn])
 
         with patch.dict(
             "sys.modules",
@@ -1050,6 +1053,13 @@ class TestJSONExport:
             )
             data = _read_json(driver.export_rules_json(tmp_path))
 
+        assert mock_handler_cls.call_count == 2
+        mock_conn.send_command.assert_called_once()
+        mock_conn.__exit__.assert_called_once()
+        recovered_conn.send_command.assert_called_once_with(
+            "show configuration | display xml | no-more", read_timeout=60.0
+        )
+        recovered_conn.__exit__.assert_called_once()
         assert "hit_counts_collected_at" not in data
         assert [rule["hit_count"] for rule in data["contexts"][0]["rules"]] == [
             None,
@@ -1118,8 +1128,11 @@ class TestJSONExport:
                 data = _read_json(driver.export_rules_json(tmp_path))
 
         assert mock_conn.send_command.call_args_list == [
-            call("show security policies hit-count | display xml | no-more"),
-            call("show configuration | display xml | no-more"),
+            call(
+                "show security policies hit-count | display xml | no-more",
+                read_timeout=60.0,
+            ),
+            call("show configuration | display xml | no-more", read_timeout=60.0),
         ]
         assert data["hit_counts_collected_at"] == "2026-03-31T12:34:56Z"
         assert [rule["hit_count"] for rule in data["contexts"][0]["rules"]] == [0]
