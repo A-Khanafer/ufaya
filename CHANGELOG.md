@@ -27,6 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Juniper live configuration and hit-count reads now default to 60 seconds and
+  accept a finite positive `read_timeout` constructor option for slower devices.
+- Failed Juniper hit-count commands now close and replace the SSH session before
+  configuration collection. Configuration read failures also discard the session,
+  including when the driver is used as a context manager.
 - Netmiko import typing configuration supports both older untyped releases and
   newer typed releases without an unused-ignore error.
 
